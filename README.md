@@ -212,7 +212,64 @@ curl -X POST "http://localhost:8080/api/diagrams" \
 }
 ```
 
-### 5. Clear ServiceModel and Result Cache
+### 5. Export Diagram to Image (`SVG` / `PNG`)
+You can request the diagram directly formatted as SVG or PNG by specifying `"format": "SVG"` or `"format": "PNG"`:
+```bash
+curl -X POST "http://localhost:8080/api/diagrams" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "src/test/resources/fixtures/order-service",
+    "type": "FLOWCHART",
+    "format": "SVG"
+  }'
+```
+**Windows PowerShell:**
+```powershell
+$body = @{
+    path = "src/test/resources/fixtures/order-service"
+    type = "FLOWCHART"
+    format = "SVG"
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/diagrams" -ContentType "application/json" -Body $body
+```
+**Response:**
+```json
+{
+  "type": "FLOWCHART",
+  "mermaid": "flowchart TD\n ...",
+  "valid": true,
+  "attempts": 1,
+  "warnings": [],
+  "cached": false,
+  "image": "<base64-encoded-image>",
+  "contentType": "image/svg+xml"
+}
+```
+
+---
+
+### 6. Render Raw Mermaid Bytes (`POST /api/diagrams/render`)
+Renders any Mermaid diagram string into raw SVG or PNG bytes with appropriate `Content-Type`:
+```bash
+curl -X POST "http://localhost:8080/api/diagrams/render" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mermaid": "flowchart TD\n  A[Start] --> B[Finish]",
+    "format": "SVG"
+  }' --output diagram.svg
+```
+**Windows PowerShell:**
+```powershell
+$body = @{
+    mermaid = "flowchart TD`n  A[Start] --> B[Finish]"
+    format = "SVG"
+} | ConvertTo-Json
+Invoke-WebRequest -Method Post -Uri "http://localhost:8080/api/diagrams/render" -ContentType "application/json" -Body $body -OutFile "diagram.svg"
+```
+
+---
+
+### 7. Clear ServiceModel and Result Cache
 ```bash
 curl -X DELETE "http://localhost:8080/api/diagrams/cache"
 ```
@@ -230,7 +287,21 @@ Invoke-RestMethod -Method Delete -Uri "http://localhost:8080/api/diagrams/cache"
 
 ---
 
-## 5. ServiceModel & Diagram Result Caching
+## 5. Web UI (Offline & Bundled)
+
+A lightweight single-page web application is served at `http://localhost:8080/`:
+- **Offline & Private**: Bundles `mermaid.min.js` directly within static resources (no external CDN calls, leaks nothing).
+- **Interactive Controls**:
+  - Input project path relative to `DIAGRAM_ROOT`.
+  - Button to query and populate Spring endpoints dropdown.
+  - Select diagram type (`SEQUENCE`, `FLOWCHART`, `STATE`) and depth limit.
+  - Real-time in-browser rendering with syntax validation indicators and warnings.
+  - One-click **Copy Mermaid**, **Download SVG**, and **Download PNG** buttons.
+  - Light and dark theme friendly (`prefers-color-scheme`).
+
+---
+
+## 6. ServiceModel & Diagram Result Caching
 
 To avoid re-scanning and re-parsing thousands of Java files on repeated requests, Diagram Agent features an in-memory Caffeine cache:
 - **`diagram.cache.enabled`** (default: `true`): Enables caching of parsed `ServiceModel` structures.

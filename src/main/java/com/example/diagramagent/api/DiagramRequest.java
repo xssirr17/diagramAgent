@@ -1,5 +1,6 @@
 package com.example.diagramagent.api;
 
+import com.example.diagramagent.render.DiagramFormat;
 import com.example.diagramagent.scan.DiagramType;
 import jakarta.validation.constraints.NotNull;
 
@@ -9,9 +10,14 @@ public record DiagramRequest(
     @NotNull(message = "Diagram type is required (SEQUENCE, FLOWCHART, or STATE)")
     DiagramType type,
     String entryPoint,
-    Integer maxDepth
+    Integer maxDepth,
+    DiagramFormat format
 ) {
     public String effectivePath() {
         return path != null && !path.isBlank() ? path : projectPath;
+    }
+
+    public DiagramFormat resolvedFormat() {
+        return format != null ? format : DiagramFormat.MERMAID;
     }
 }

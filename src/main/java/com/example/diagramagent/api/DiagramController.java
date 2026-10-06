@@ -2,13 +2,18 @@ package com.example.diagramagent.api;
 
 import com.example.diagramagent.agent.DiagramAgent;
 import com.example.diagramagent.cache.ServiceModelCache;
+import com.example.diagramagent.render.DiagramFormat;
+import com.example.diagramagent.render.DiagramRenderer;
 import com.example.diagramagent.scan.EndpointInfo;
 import com.example.diagramagent.scan.ServiceModel;
 import com.example.diagramagent.security.PathGuard;
 import jakarta.validation.Valid;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,34 +30,47 @@ public class DiagramController {
     private final PathGuard pathGuard;
     private final ServiceModelCache serviceModelCache;
     private final DiagramAgent diagramAgent;
+    private final DiagramRenderer diagramRenderer;
 
     public DiagramController(
         PathGuard pathGuard,
         ServiceModelCache serviceModelCache,
-        DiagramAgent diagramAgent
+        DiagramAgent diagramAgent,
+        DiagramRenderer diagramRenderer
     ) {
         this.pathGuard = pathGuard;
         this.serviceModelCache = serviceModelCache;
         this.diagramAgent = diagramAgent;
+        this.diagramRenderer = diagramRenderer;
     }
 
     @PostMapping
     public ResponseEntity<DiagramResponse> generateDiagram(@Valid @RequestBody DiagramRequest request) {
         Path resolvedPath = pathGuard.validateAndResolve(request.effectivePath());
         int maxDepth = request.maxDepth() != null && request.maxDepth() > 0 ? request.maxDepth() : 4;
+        DiagramFormat format = request.resolvedFormat();
 
         // Check result cache first if enabled
         DiagramAgent.DiagramResult cachedResult = serviceModelCache.getCachedResult(
             resolvedPath, request.type(), request.entryPoint(), maxDepth
         );
         if (cachedResult != null) {
+            String imageBase64 = null;
+            String contentType = null;
+            if (format != DiagramFormat.MERMAID) {
+                byte[] bytes = diagramRenderer.render(cachedResult.mermaid(), format);
+                imageBase64 = Base64.getEncoder().encodeToString(bytes);
+                contentType = format.contentType();
+            }
             return ResponseEntity.ok(new DiagramResponse(
                 cachedResult.type(),
                 cachedResult.mermaid(),
                 cachedResult.valid(),
                 cachedResult.attempts(),
                 cachedResult.warnings(),
-                true
+                true,
+                imageBase64,
+                contentType
             ));
         }
 
@@ -68,14 +86,32 @@ public class DiagramController {
 
         serviceModelCache.putResult(resolvedPath, request.type(), request.entryPoint(), maxDepth, result);
 
+        String imageBase64 = null;
+        String contentType = null;
+        if (format != DiagramFormat.MERMAID) {
+            byte[] bytes = diagramRenderer.render(result.mermaid(), format);
+            imageBase64 = Base64.getEncoder().encodeToString(bytes);
+            contentType = format.contentType();
+        }
+
         return ResponseEntity.ok(new DiagramResponse(
             result.type(),
             result.mermaid(),
             result.valid(),
             result.attempts(),
             result.warnings(),
-            result.cached()
+            result.cached(),
+            imageBase64,
+            contentType
         ));
+    }
+
+    @PostMapping(value = "/render", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<byte[]> renderDiagram(@Valid @RequestBody RenderRequest request) {
+        byte[] imageBytes = diagramRenderer.render(request.mermaid(), request.format());
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_TYPE, request.format().contentType())
+            .body(imageBytes);
     }
 
     @GetMapping("/endpoints")

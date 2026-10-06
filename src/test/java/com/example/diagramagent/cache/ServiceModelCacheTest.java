@@ -33,7 +33,8 @@ class ServiceModelCacheTest {
 
         DiagramProperties props = new DiagramProperties(
             null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
-            new DiagramProperties.CacheProperties(true, 5, 30, false)
+            new DiagramProperties.CacheProperties(true, 5, 30, false),
+            null
         );
 
         ServiceModelCache cache = new ServiceModelCache(props, scanner, new MockEnvironment());
@@ -62,7 +63,8 @@ class ServiceModelCacheTest {
 
         DiagramProperties props = new DiagramProperties(
             null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
-            new DiagramProperties.CacheProperties(true, 5, 30, false)
+            new DiagramProperties.CacheProperties(true, 5, 30, false),
+            null
         );
 
         ServiceModelCache cache = new ServiceModelCache(props, scanner, new MockEnvironment());
@@ -99,7 +101,8 @@ class ServiceModelCacheTest {
         // Max 2 projects
         DiagramProperties props = new DiagramProperties(
             null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
-            new DiagramProperties.CacheProperties(true, 2, 30, false)
+            new DiagramProperties.CacheProperties(true, 2, 30, false),
+            null
         );
 
         ServiceModelCache cache = new ServiceModelCache(props, scanner, new MockEnvironment());
@@ -124,7 +127,8 @@ class ServiceModelCacheTest {
 
         DiagramProperties props = new DiagramProperties(
             null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
-            new DiagramProperties.CacheProperties(false, 5, 30, false)
+            new DiagramProperties.CacheProperties(false, 5, 30, false),
+            null
         );
 
         ServiceModelCache cache = new ServiceModelCache(props, scanner, new MockEnvironment());

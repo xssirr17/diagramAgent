@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagram Agent</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --badge-bg: #f1f5f9;
+      --radius: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --primary: #3b82f6;
+        --primary-hover: #2563eb;
+        --badge-bg: #1e293b;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .subtitle { color: var(--text-muted); font-size: 0.875rem; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input, select, textarea, button {
+      font-family: inherit;
+      font-size: 0.9375rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.2);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-weight: 500;
+      padding: 0.5rem 1rem;
+      border: 1px solid transparent;
+      user-select: none;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-secondary {
+      background: var(--badge-bg);
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--border);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .action-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.625rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+    }
+    .badge-success { background: rgba(22, 163, 74, 0.1); color: var(--success); border-color: var(--success); }
+    .badge-warning { background: rgba(217, 119, 6, 0.1); color: var(--warning); border-color: var(--warning); }
+    .badge-danger { background: rgba(220, 38, 38, 0.1); color: var(--danger); border-color: var(--danger); }
+    .alert {
+      padding: 0.875rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      border: 1px solid;
+      margin-bottom: 1rem;
+    }
+    .alert-danger { background: rgba(220, 38, 38, 0.08); border-color: var(--danger); color: var(--danger); }
+    .alert-warning { background: rgba(217, 119, 6, 0.08); border-color: var(--warning); color: var(--warning); }
+    .diagram-viewport {
+      min-height: 250px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: var(--bg);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      overflow: auto;
+    }
+    .diagram-viewport svg {
+      max-width: 100%;
+      height: auto;
+    }
+    .meta-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .badges-group {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8125rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    details summary {
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Diagram Agent</h1>
+      <p class="subtitle">Deterministic Java Extraction & Verified Mermaid Diagrams</p>
+    </div>
+    <div id="statusBadge" class="badge">Ready</div>
+  </header>
+
+  <section class="card">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="projectPath">Project Path</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <input type="text" id="projectPath" value="src/test/resources/fixtures/order-service" placeholder="Relative to DIAGRAM_ROOT" style="flex:1;">
+          <button id="btnLoadEndpoints" class="btn btn-secondary" title="Scan and load endpoints">Endpoints</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="endpointSelect">Entry Point</label>
+        <select id="endpointSelect">
+          <option value="">(None / Entire Service Flow)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="diagramType">Diagram Type</label>
+        <select id="diagramType">
+          <option value="SEQUENCE">Sequence Diagram</option>
+          <option value="FLOWCHART">Flowchart</option>
+          <option value="STATE">State Diagram</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="maxDepth">Max Call Depth</label>
+        <input type="number" id="maxDepth" value="4" min="1" max="10">
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button id="btnGenerate" class="btn btn-primary">Generate Diagram</button>
+      <button id="btnClearCache" class="btn btn-secondary">Clear Cache</button>
+    </div>
+  </section>
+
+  <div id="errorBox" class="alert alert-danger" style="display: none;"></div>
+  <div id="warningBox" class="alert alert-warning" style="display: none;"></div>
+
+  <section id="resultSection" class="card" style="display: none;">
+    <div class="meta-bar">
+      <div class="badges-group">
+        <span id="validBadge" class="badge"></span>
+        <span id="cachedBadge" class="badge"></span>
+        <span id="attemptsBadge" class="badge"></span>
+      </div>
+      <div class="action-row">
+        <button id="btnCopyMermaid" class="btn btn-secondary">Copy Mermaid</button>
+        <button id="btnDownloadSvg" class="btn btn-secondary">Download SVG</button>
+        <button id="btnDownloadPng" class="btn btn-secondary">Download PNG</button>
+      </div>
+    </div>
+
+    <div id="diagramContainer" class="diagram-viewport">
+      <div id="mermaidTarget"></div>
+    </div>
+
+    <div style="margin-top: 1.5rem;">
+      <details>
+        <summary>View Raw Mermaid Code</summary>
+        <pre id="rawMermaidCode"></pre>
+      </details>
+    </div>
+  </section>
+</div>
+
+<script src="/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose'
+  });
+
+  const projectPathInput = document.getElementById('projectPath');
+  const endpointSelect = document.getElementById('endpointSelect');
+  const diagramTypeSelect = document.getElementById('diagramType');
+  const maxDepthInput = document.getElementById('maxDepth');
+  const btnLoadEndpoints = document.getElementById('btnLoadEndpoints');
+  const btnGenerate = document.getElementById('btnGenerate');
+  const btnClearCache = document.getElementById('btnClearCache');
+  const btnCopyMermaid = document.getElementById('btnCopyMermaid');
+  const btnDownloadSvg = document.getElementById('btnDownloadSvg');
+  const btnDownloadPng = document.getElementById('btnDownloadPng');
+
+  const errorBox = document.getElementById('errorBox');
+  const warningBox = document.getElementById('warningBox');
+  const resultSection = document.getElementById('resultSection');
+  const mermaidTarget = document.getElementById('mermaidTarget');
+  const rawMermaidCode = document.getElementById('rawMermaidCode');
+
+  let currentMermaid = '';
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+  function clearErrors() {
+    errorBox.style.display = 'none';
+    warningBox.style.display = 'none';
+  }
+
+  btnLoadEndpoints.addEventListener('click', async () => {
+    clearErrors();
+    const path = projectPathInput.value.trim();
+    if (!path) return showError("Project path is required");
+
+    btnLoadEndpoints.disabled = true;
+    btnLoadEndpoints.textContent = "Loading...";
+
+    try {
+      const resp = await fetch(`/api/diagrams/endpoints?path=${encodeURIComponent(path)}`);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      const endpoints = await resp.json();
+      endpointSelect.innerHTML = '<option value="">(None / Entire Service Flow)</option>';
+      endpoints.forEach(ep => {
+        const opt = document.createElement('option');
+        opt.value = ep.handler;
+        opt.textContent = `${ep.httpMethod} ${ep.path} -> ${ep.handler}`;
+        endpointSelect.appendChild(opt);
+      });
+      if (endpoints.length > 0) {
+        endpointSelect.selectedIndex = 1;
+      }
+    } catch (e) {
+      showError("Failed to load endpoints: " + e.message);
+    } finally {
+      btnLoadEndpoints.disabled = false;
+      btnLoadEndpoints.textContent = "Endpoints";
+    }
+  });
+
+  btnGenerate.addEventListener('click', async () => {
+    clearErrors();
+    const path = projectPathInput.value.trim();
+    if (!path) return showError("Project path is required");
+
+    btnGenerate.disabled = true;
+    btnGenerate.textContent = "Generating...";
+
+    const payload = {
+      path: path,
+      type: diagramTypeSelect.value,
+      entryPoint: endpointSelect.value || null,
+      maxDepth: parseInt(maxDepthInput.value, 10) || 4
+    };
+
+    try {
+      const resp = await fetch('/api/diagrams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || `Generation failed (${resp.status})`);
+      }
+
+      currentMermaid = data.mermaid;
+      rawMermaidCode.textContent = currentMermaid;
+
+      // Badges
+      const validBadge = document.getElementById('validBadge');
+      validBadge.textContent = data.valid ? "VALID" : "INVALID";
+      validBadge.className = "badge " + (data.valid ? "badge-success" : "badge-danger");
+
+      const cachedBadge = document.getElementById('cachedBadge');
+      cachedBadge.textContent = data.cached ? "CACHED" : "FRESH";
+      cachedBadge.className = "badge " + (data.cached ? "badge-warning" : "badge-secondary");
+
+      const attemptsBadge = document.getElementById('attemptsBadge');
+      attemptsBadge.textContent = `Attempts: ${data.attempts}`;
+      attemptsBadge.className = "badge";
+
+      // Warnings
+      if (data.warnings && data.warnings.length > 0) {
+        warningBox.textContent = "Warnings: " + data.warnings.join(" | ");
+        warningBox.style.display = 'block';
+      }
+
+      // Render Mermaid in browser
+      resultSection.style.display = 'block';
+      mermaidTarget.innerHTML = '';
+      const { svg } = await mermaid.render('mermaidSvgId' + Date.now(), currentMermaid);
+      mermaidTarget.innerHTML = svg;
+
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      btnGenerate.disabled = false;
+      btnGenerate.textContent = "Generate Diagram";
+    }
+  });
+
+  btnClearCache.addEventListener('click', async () => {
+    clearErrors();
+    try {
+      const resp = await fetch('/api/diagrams/cache', { method: 'DELETE' });
+      const data = await resp.json();
+      alert(data.message || "Cache cleared.");
+    } catch (e) {
+      showError("Failed to clear cache: " + e.message);
+    }
+  });
+
+  btnCopyMermaid.addEventListener('click', async () => {
+    if (!currentMermaid) return;
+    await navigator.clipboard.writeText(currentMermaid);
+    btnCopyMermaid.textContent = "Copied!";
+    setTimeout(() => { btnCopyMermaid.textContent = "Copy Mermaid"; }, 1500);
+  });
+
+  async function downloadRenderedImage(format) {
+    if (!currentMermaid) return;
+    try {
+      const resp = await fetch('/api/diagrams/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mermaid: currentMermaid, format: format })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || `Failed to render image: HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `diagram.${format.toLowerCase()}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      showError("Image download failed: " + e.message);
+    }
+  }
+
+  btnDownloadSvg.addEventListener('click', () => downloadRenderedImage('SVG'));
+  btnDownloadPng.addEventListener('click', () => downloadRenderedImage('PNG'));
+</script>
+</body>
+</html>

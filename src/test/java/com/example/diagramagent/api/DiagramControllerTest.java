@@ -41,6 +41,9 @@ class DiagramControllerTest {
     @MockBean
     private DiagramAgent diagramAgent;
 
+    @MockBean
+    private com.example.diagramagent.render.DiagramRenderer diagramRenderer;
+
     @Test
     void postDiagramReturns200WithMermaid() throws Exception {
         Path mockPath = Paths.get("/safe/root/project");
@@ -141,5 +144,59 @@ class DiagramControllerTest {
         mockMvc.perform(delete("/api/diagrams/cache"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("CLEARED"));
+    }
+
+    @Test
+    void postDiagramWithSvgFormatReturnsBase64Image() throws Exception {
+        Path mockPath = Paths.get("/safe/root/project");
+        when(pathGuard.validateAndResolve(any())).thenReturn(mockPath);
+
+        ServiceModel mockModel = new ServiceModel(List.of(), List.of(), List.of(), List.of(), List.of());
+        when(serviceModelCache.getOrScan(mockPath)).thenReturn(mockModel);
+
+        DiagramAgent.DiagramResult agentResult = new DiagramAgent.DiagramResult(
+            DiagramType.SEQUENCE, "sequenceDiagram\nClient->>A: ping", true, 1, List.of()
+        );
+        when(diagramAgent.generateDiagram(any(), any(), eq(DiagramType.SEQUENCE), any(), eq(4)))
+            .thenReturn(agentResult);
+
+        when(diagramRenderer.render("sequenceDiagram\nClient->>A: ping", com.example.diagramagent.render.DiagramFormat.SVG))
+            .thenReturn("<svg>test</svg>".getBytes());
+
+        String json = """
+            {
+                "path": "sub-dir",
+                "type": "SEQUENCE",
+                "format": "SVG"
+            }
+            """;
+
+        mockMvc.perform(post("/api/diagrams")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.type").value("SEQUENCE"))
+            .andExpect(jsonPath("$.contentType").value("image/svg+xml"))
+            .andExpect(jsonPath("$.image").isNotEmpty());
+    }
+
+    @Test
+    void postRenderReturnsRawBytesWithContentType() throws Exception {
+        when(diagramRenderer.render(any(), eq(com.example.diagramagent.render.DiagramFormat.SVG)))
+            .thenReturn("<svg>rendered</svg>".getBytes());
+
+        String json = """
+            {
+                "mermaid": "sequenceDiagram\\nA->>B: hi",
+                "format": "SVG"
+            }
+            """;
+
+        mockMvc.perform(post("/api/diagrams/render")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "image/svg+xml"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string("<svg>rendered</svg>"));
     }
 }

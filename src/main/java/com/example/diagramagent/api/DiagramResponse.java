@@ -9,8 +9,21 @@ public record DiagramResponse(
     boolean valid,
     int attempts,
     List<String> warnings,
-    boolean cached
+    boolean cached,
+    String image,
+    String contentType
 ) {
+    public DiagramResponse(
+        DiagramType type,
+        String mermaid,
+        boolean valid,
+        int attempts,
+        List<String> warnings,
+        boolean cached
+    ) {
+        this(type, mermaid, valid, attempts, warnings, cached, null, null);
+    }
+
     public DiagramResponse(
         DiagramType type,
         String mermaid,
@@ -18,6 +31,6 @@ public record DiagramResponse(
         int attempts,
         List<String> warnings
     ) {
-        this(type, mermaid, valid, attempts, warnings, false);
+        this(type, mermaid, valid, attempts, warnings, false, null, null);
     }
 }

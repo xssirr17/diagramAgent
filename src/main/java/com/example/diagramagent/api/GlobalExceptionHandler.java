@@ -99,6 +99,15 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(com.example.diagramagent.render.MmdcNotAvailableException.class)
+    public ProblemDetail handleMmdcNotAvailable(com.example.diagramagent.render.MmdcNotAvailableException ex) {
+        log.warn("Mermaid CLI unavailable for export: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_IMPLEMENTED, ex.getMessage());
+        pd.setTitle("Mermaid CLI Not Available");
+        pd.setType(URI.create("urn:problem:mmdc-not-available"));
+        return pd;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());

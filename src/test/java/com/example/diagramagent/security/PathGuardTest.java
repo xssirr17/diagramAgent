@@ -41,7 +41,8 @@ class PathGuardTest {
             "mmdc",
             500,
             1048576L,
-            new DiagramProperties.CacheProperties(true, 5, 30, false)
+            new DiagramProperties.CacheProperties(true, 5, 30, false),
+            null
         );
         return new PathGuard(props);
     }
@@ -143,7 +144,8 @@ class PathGuardTest {
             "mmdc",
             500,
             1048576L,
-            new DiagramProperties.CacheProperties(true, 5, 30, false)
+            new DiagramProperties.CacheProperties(true, 5, 30, false),
+            null
         );
         PathGuard guard = new PathGuard(props);
 

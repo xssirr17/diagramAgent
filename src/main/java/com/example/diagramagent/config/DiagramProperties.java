@@ -1,5 +1,7 @@
 package com.example.diagramagent.config;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "diagram")
@@ -13,7 +15,8 @@ public record DiagramProperties(
     String mermaidCliPath,
     int maxFilesScanned,
     long maxFileSizeBytes,
-    CacheProperties cache
+    CacheProperties cache,
+    String puppeteerConfigFile
 ) {
     public DiagramProperties {
         if (maxContextChars <= 0) {
@@ -39,6 +42,11 @@ public record DiagramProperties(
         }
         if (cache == null) {
             cache = new CacheProperties(true, 5, 30, false);
+        }
+        if (puppeteerConfigFile == null || puppeteerConfigFile.isBlank()) {
+            if (Files.exists(Path.of("puppeteer-config.json"))) {
+                puppeteerConfigFile = "puppeteer-config.json";
+            }
         }
     }
 

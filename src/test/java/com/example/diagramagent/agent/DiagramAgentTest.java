@@ -56,7 +56,8 @@ class DiagramAgentTest {
 
         properties = new DiagramProperties(
             null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
-            new DiagramProperties.CacheProperties(true, 5, 30, false)
+            new DiagramProperties.CacheProperties(true, 5, 30, false),
+            null
         );
         validator = new MermaidValidator(properties);
         retryService = new DiagramRetryService(validator, properties);
