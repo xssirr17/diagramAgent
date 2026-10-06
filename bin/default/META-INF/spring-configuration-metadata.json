@@ -1,0 +1,64 @@
+{
+  "groups": [
+    {
+      "name": "diagram",
+      "type": "com.example.diagramagent.config.DiagramProperties",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "diagram.agentic",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "diagram.allowed-root",
+      "type": "java.lang.String",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties"
+    },
+    {
+      "name": "diagram.max-context-chars",
+      "type": "java.lang.Integer",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.max-depth",
+      "type": "java.lang.Integer",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.max-file-size-bytes",
+      "type": "java.lang.Long",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.max-files-scanned",
+      "type": "java.lang.Integer",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.max-retries",
+      "type": "java.lang.Integer",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.max-tool-calls",
+      "type": "java.lang.Integer",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "diagram.mermaid-cli-path",
+      "type": "java.lang.String",
+      "sourceType": "com.example.diagramagent.config.DiagramProperties"
+    }
+  ],
+  "hints": []
+}

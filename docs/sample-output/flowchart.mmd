@@ -1,0 +1,17 @@
+flowchart TD
+    start([Start: POST /orders/{id}/pay]) --> findOrder[OrderRepository.findById]
+    findOrder --> checkFound{Order found?}
+    checkFound -->|No| throwNotFound([Throw IllegalArgumentException: Order not found])
+    checkFound -->|Yes| checkStatus{order.getStatus == NEW?}
+
+    checkStatus -->|No| throwInvalidState([Throw IllegalStateException: Only NEW orders can be paid])
+    checkStatus -->|Yes| callPayment[PaymentClient.processPayment]
+
+    callPayment --> checkPaid{paid == true?}
+    checkPaid -->|Yes| setPaid[order.setStatus: PAID]
+    checkPaid -->|No| setCancelled[order.setStatus: CANCELLED]
+
+    setPaid --> saveOrder[OrderRepository.save]
+    setCancelled --> saveOrder
+
+    saveOrder --> endSuccess([End: Return Order])

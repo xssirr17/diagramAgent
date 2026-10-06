@@ -1,0 +1,21 @@
+[versions]
+java = "17"
+springBoot = "3.4.3"
+springDependencyManagement = "1.1.7"
+springAi = "1.1.8"
+javaParser = "3.28.2"
+
+[libraries]
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "springAi" }
+spring-ai-google-genai = { module = "org.springframework.ai:spring-ai-starter-model-google-genai" }
+spring-ai-vertex-ai = { module = "org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini" }
+javaparser-core = { module = "com.github.javaparser:javaparser-core", version.ref = "javaParser" }
+javaparser-symbol-solver = { module = "com.github.javaparser:javaparser-symbol-solver-core", version.ref = "javaParser" }
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }

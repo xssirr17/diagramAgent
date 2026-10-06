@@ -1,0 +1,7 @@
+﻿stateDiagram-v2
+    [*] --> NEW : OrderService#createOrder
+    NEW --> PAID : OrderService#payOrder (OrderStatus.PAID)
+    NEW --> CANCELLED : OrderService#payOrder (OrderStatus.CANCELLED)
+    PAID --> SHIPPED : OrderService#shipOrder (OrderStatus.SHIPPED)
+    SHIPPED --> [*]
+    CANCELLED --> [*]

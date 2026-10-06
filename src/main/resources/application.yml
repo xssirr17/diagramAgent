@@ -1,0 +1,47 @@
+spring:
+  profiles:
+    default: gemini-api
+    active: ${SPRING_PROFILES_ACTIVE:gemini-api}
+
+diagram:
+  allowed-root: ${DIAGRAM_ROOT:.}
+  max-context-chars: 60000
+  max-retries: 2
+  max-depth: 4
+  agentic: false
+  max-tool-calls: 15
+  mermaid-cli-path: mmdc
+  max-files-scanned: 500
+  max-file-size-bytes: 1048576
+
+---
+spring:
+  config:
+    activate:
+      on-profile: gemini-api
+  ai:
+    google:
+      genai:
+        api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
+        chat:
+          options:
+            model: ${DIAGRAM_MODEL:gemini-3.5-flash}
+            temperature: 0.1
+            max-output-tokens: 4000
+
+---
+spring:
+  config:
+    activate:
+      on-profile: vertex
+  ai:
+    vertex:
+      ai:
+        gemini:
+          project-id: ${GCP_PROJECT_ID:}
+          location: ${GCP_LOCATION:us-central1}
+          chat:
+            options:
+              model: ${DIAGRAM_MODEL:gemini-2.5-flash}
+              temperature: 0.1
+              max-output-tokens: 4000

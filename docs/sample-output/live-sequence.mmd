@@ -1,0 +1,12 @@
+﻿sequenceDiagram
+    participant Client as "Client"
+    participant OrderController as "OrderController"
+    participant OrderService as "OrderService"
+    participant OrderRepository as "OrderRepository"
+
+    Client->>OrderController: POST /orders (OrderRequest)
+    OrderController->>OrderService: createOrder(amount)
+    OrderService->>OrderRepository: save(order)
+    OrderRepository-->>OrderService: order
+    OrderService-->>OrderController: order
+    OrderController-->>Client: order

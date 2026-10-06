@@ -1,0 +1,13 @@
+﻿flowchart TD
+    start(["Start: OrderController.createOrder"]) --> getAmount["request.amount()"]
+    getAmount --> callService["OrderService.createOrder(amount)"]
+    
+    subgraph OrderService ["OrderService"]
+        callService --> saveCall["OrderRepository.save(order)"]
+    end
+
+    subgraph OrderRepository ["OrderRepository (DB)"]
+        saveCall --> dbSave[("save(order)")]
+    end
+
+    dbSave --> endNode(["End: Return Order"])

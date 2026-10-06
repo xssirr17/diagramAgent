@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    actor Client
+    participant OrderController as "OrderController"
+    participant OrderService as "OrderService"
+    participant OrderRepository as "OrderRepository"
+    participant PaymentClient as "PaymentClient"
+
+    Client->>OrderController: POST /orders/{id}/pay
+    activate OrderController
+    OrderController->>OrderService: payOrder(id)
+    activate OrderService
+    OrderService->>OrderRepository: findById(id)
+    activate OrderRepository
+    OrderRepository-->>OrderService: Optional<Order>
+    deactivate OrderRepository
+
+    alt Order status != NEW
+        OrderService-->>OrderController: throw IllegalStateException("Only NEW orders can be paid")
+        OrderController-->>Client: 400 Bad Request
+    else Order status == NEW
+        OrderService->>PaymentClient: processPayment(orderId, amount)
+        activate PaymentClient
+        PaymentClient-->>OrderService: boolean (paid)
+        deactivate PaymentClient
+
+        alt Payment successful (paid == true)
+            Note over OrderService: order.setStatus(OrderStatus.PAID)
+        else Payment failed (paid == false)
+            Note over OrderService: order.setStatus(OrderStatus.CANCELLED)
+        end
+
+        OrderService->>OrderRepository: save(order)
+        activate OrderRepository
+        OrderRepository-->>OrderService: Order
+        deactivate OrderRepository
+
+        OrderService-->>OrderController: Order
+        deactivate OrderService
+        OrderController-->>Client: 200 OK (Order)
+        deactivate OrderController
+    end
