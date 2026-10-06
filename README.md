@@ -1,471 +1,292 @@
 # Diagram Agent
 
-**Diagram Agent** is a Spring Boot service powered by **Spring AI** and **Google Gemini** that takes a filesystem path to a Java (Spring) service's source code and generates verified Mermaid diagrams:
+**Diagram Agent** is an extensible developer tool and Spring Boot service powered by **Spring AI** and **Google Gemini** that statically analyzes Java (Spring Boot) source code and generates verified architecture diagrams in **Mermaid**, **SVG**, or **PNG**:
 - **Sequence diagram** (`sequenceDiagram`)
 - **Flowchart** (`flowchart TD`)
 - **State diagram** (`stateDiagram-v2`)
+- **Git Diff diagram** (comparing two commits/branches without checking out code)
 
-The application does **NOT** dump raw source code into the LLM. Instead, it operates in two stages:
-1. **Deterministic Extraction (JavaParser)**: Scans `.java` files under `src/main/java`, extracting classes, stereotypes (`@RestController`, `@Service`, `@Repository`), dependency injection graphs, Spring HTTP endpoints, call chains (with external call categorization), control flows (`if/else`, `switch`, `try/catch`, loops), and state/enum transitions.
-2. **LLM Generation (Spring AI + Gemini)**: Generates Mermaid diagrams using only the extracted structure via Spring AI's provider-neutral `ChatClient` abstraction, with post-processing, validation, and automated retries.
+The application does **NOT** dump raw source code into the LLM. Instead, it operates in two deterministic stages:
+1. **Deterministic Extraction (JavaParser & JGit)**: Scans `.java` files, extracting classes, stereotypes (`@RestController`, `@Service`, `@Repository`), dependency injection graphs, Spring HTTP endpoints, call chains (with external call categorization), control flows (`if/else`, `switch`, `try/catch`, loops), and state/enum transitions.
+2. **LLM Generation & Validation (Spring AI + Gemini + Mermaid CLI)**: Synthesizes diagrams using only the extracted structure via Spring AI's provider-neutral `ChatClient` abstraction, with post-processing, validation (`mmdc` or structural fallback), and automated self-correction retries.
 
----
-
-## 1. Tech Stack & Dependencies
-
-- **Java**: 17+
-- **Spring Boot**: 3.4.3
-- **Build System**: Gradle 8.12.1 (Kotlin DSL) with version catalog (`gradle/libs.versions.toml`) and wrapper (`./gradlew`)
-- **Spring AI**: 1.1.8 managed via `spring-ai-bom`
-- **Model Providers**:
-  - **Google GenAI Starter** (Preferred): `org.springframework.ai:spring-ai-starter-model-google-genai` (Google AI Studio Developer API, API key auth)
-  - **Vertex AI Starter** (Alternative): `org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini` (Google Cloud Vertex AI, project/location/ADC auth)
-- **Java Parser**: `com.github.javaparser:javaparser-core` & `javaparser-symbol-solver-core` (3.28.2)
-- **Architecture**: No Lombok, constructor injection, immutable Java records for DTOs and models.
+Multiple interfaces are supported against the exact same core engine:
+- **REST API** (`/api/diagrams/*`)
+- **Offline Web UI** (`/` with bundled local Mermaid.js)
+- **Command Line Interface (CLI)** (`scripts/diagram-agent` & `.cmd`)
+- **Model Context Protocol (MCP) Server** (for Claude Desktop, Claude Code, and Cursor)
+- **Docker & Docker Compose** (bundled with Chromium & `mermaid-cli`)
 
 ---
 
-## 2. Environment Variables & Setup
+## 1. Features & Architecture Overview
 
-### Environment Variables
-
-| Variable | Description | Default / Example |
-|---|---|---|
-| `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Gemini Developer API key (for `gemini-api` profile) | `AIzaSy...` |
-| `DIAGRAM_ROOT` | Allowed root path on the local filesystem (mandatory for security) | E.g. `/workspace` or `.` |
-| `DIAGRAM_MODEL` | Gemini model name | `gemini-2.5-flash` (or `gemini-3.5-flash`) |
-| `DIAGRAM_MAX_FILES_SCANNED` | Maximum Java source files scanned (caps large repository scans) | `5000` (default) |
-| `GCP_PROJECT_ID` | GCP Project ID (for `vertex` profile) | `my-gcp-project` |
-| `GCP_LOCATION` | GCP Region (for `vertex` profile) | `us-central1` |
-| `SPRING_PROFILES_ACTIVE` | Active Spring profile | `gemini-api` (default) or `vertex` |
-
-### How to get a Gemini API Key
-1. Go to [Google AI Studio](https://aistudio.google.com/).
-2. Sign in with your Google account.
-3. Click **"Get API key"** and create a new key.
-4. Export the key in your terminal:
-   ```bash
-   export GOOGLE_API_KEY="AIzaSy..."
-   # On Windows PowerShell:
-   $env:GOOGLE_API_KEY="AIzaSy..."
-   ```
-
-### Choosing a Gemini Model
-Set `DIAGRAM_MODEL` to any current Gemini model:
-- `gemini-2.5-flash` (recommended for low latency, high token limit, and accurate code extraction)
-- `gemini-2.0-flash`
-- `gemini-1.5-pro`
+- **Caffeine Multi-Tier Cache**: Fast project AST scanning cache with cheap tree fingerprint invalidation (`list of .java files + lastModified + size` hashed). Re-scanning a 170+ endpoint project is eliminated unless files actually change. Optional LLM result caching (`diagram.cache.results=true`).
+- **Git Diff Visualizer**: Uses **JGit** in-memory object loaders to compare two git revisions without touching working trees or switching branches. Generates deterministic structural diffs in code and renders visual diff diagrams with green (added), dashed-red (removed), and amber (modified) highlights.
+- **Image Export (SVG & PNG)**: Headless rendering using `@mermaid-js/mermaid-cli` (`mmdc`) with a sandboxed Chromium configuration (`puppeteer-config.json`).
+- **Offline Single-Page Web UI**: Lightweight static dashboard served at `/` with bundled local `mermaid.min.js` (no CDN dependencies, no data leakage). Features endpoint auto-discovery, diagram preview, and direct SVG/PNG downloads.
+- **Headless CLI (Picocli)**: Standalone command-line executable with subcommands `generate`, `endpoints`, `diff`, and `validate`. Strict exit codes (0: success, 2: bad args, 3: insufficient info, 4: provider error, 5: validation failure), and stderr-routed logging to ensure clean stdout piping.
+- **Model Context Protocol (MCP)**: Native tools provider exposing `list_endpoints`, `generate_diagram`, `diff_diagram`, and `render_diagram` over stdio and HTTP/SSE transports.
+- **Strict Security Guardrails**: `PathGuard` confinement against directory traversal and symlink escapes, read-only code analysis, and strict Git ref validation.
 
 ---
 
-## 3. Provider Switching (`gemini-api` vs `vertex`)
+## 2. Configuration Reference
 
-The application code depends strictly on Spring AI's provider-neutral `ChatClient` and `ChatModel` interfaces. Provider selection is completely decoupled and switchable via configuration.
+All settings can be configured via `application.yml` or environment variables:
 
-### Switching at Runtime (Spring Profiles)
-By default, the active profile is `gemini-api`. To switch to Vertex AI:
-
-```bash
-# Using Google AI Studio Gemini API (default):
-java -jar build/libs/diagram-agent-0.0.1-SNAPSHOT.jar --spring.profiles.active=gemini-api
-
-# Using Google Cloud Vertex AI:
-java -jar build/libs/diagram-agent-0.0.1-SNAPSHOT.jar --spring.profiles.active=vertex
-```
-
-### Switching at Build Time (Gradle Property)
-The Gradle build accepts an `-PaiProvider` property:
-```bash
-# Build with Google GenAI starter (default):
-./gradlew build -PaiProvider=gemini-api
-
-# Build with Vertex AI starter:
-./gradlew build -PaiProvider=vertex
-
-# Build with both starters included:
-./gradlew build -PaiProvider=both
-```
+| Property | Environment Variable | Default | Description |
+|---|---|---|---|
+| `diagram.allowed-root` | `DIAGRAM_ROOT` | `.` | Mandatory base directory boundary for all operations |
+| `diagram.max-context-chars` | - | `60000` | Maximum character budget sent to LLM prompts |
+| `diagram.max-retries` | - | `2` | Automated syntax self-correction retries on validation failure |
+| `diagram.max-depth` | - | `4` | Maximum call chain traversal depth |
+| `diagram.agentic` | - | `false` | Enable multi-step agentic tool calling with Gemini |
+| `diagram.max-tool-calls` | - | `15` | Maximum agentic tool iterations |
+| `diagram.mermaid-cli-path` | `DIAGRAM_MERMAID_CLI_PATH` | `mmdc` | Executable path for Mermaid CLI |
+| `diagram.puppeteer-config-file`| `DIAGRAM_PUPPETEER_CONFIG_FILE`| `puppeteer-config.json` | Puppeteer configuration for mmdc (`--no-sandbox`) |
+| `diagram.max-files-scanned` | `DIAGRAM_MAX_FILES_SCANNED` | `5000` | Upper cap of Java files scanned per project |
+| `diagram.max-file-size-bytes` | - | `1048576` (1MB) | Maximum individual file size scanned |
+| `diagram.cache.enabled` | `DIAGRAM_CACHE_ENABLED` | `true` | Enable ServiceModel AST in-memory cache |
+| `diagram.cache.max-projects` | `DIAGRAM_CACHE_MAX_PROJECTS` | `5` | Maximum projects cached concurrently |
+| `diagram.cache.ttl-minutes` | `DIAGRAM_CACHE_TTL_MINUTES` | `30` | Cache time-to-live in minutes |
+| `diagram.cache.results` | `DIAGRAM_CACHE_RESULTS` | `false` | Enable caching of completed diagram generation results |
+| `spring.ai.google.genai.api-key`| `GOOGLE_API_KEY` | - | Google Gemini API key |
+| `spring.ai.google.genai.chat.options.model`| `DIAGRAM_MODEL`| `gemini-3.5-flash` | Gemini model name |
+| `spring.ai.mcp.server.stdio` | `SPRING_AI_MCP_SERVER_STDIO`| `true` | Run MCP server in stdio transport mode |
 
 ---
 
-## 4. Building and Running
+## 3. Quick Start: Web Application
 
-### Build and Test
+### 1. Build and Run
 ```bash
-# Run full clean build and tests
-./gradlew clean build
-
-# Run unit and integration tests only
-./gradlew test
-```
-
-### Run Application
-```bash
+# Set your Gemini API key and allowed root
 export GOOGLE_API_KEY="AIzaSy..."
 export DIAGRAM_ROOT="."
+
 ./gradlew bootRun
 ```
 
+On Windows PowerShell:
+```powershell
+$env:GOOGLE_API_KEY="AIzaSy..."
+$env:DIAGRAM_ROOT="."
+.\gradlew.bat bootRun
+```
+
+### 2. Open the Web UI
+Navigate to `http://localhost:8080/` in your browser.
+- Enter a relative path to your service (e.g., `src/test/resources/fixtures/order-service`).
+- Click **"Load Endpoints"** to automatically discover available controllers and routes.
+- Choose a diagram type (**Sequence**, **Flowchart**, or **State**) and click **"Generate Diagram"**.
+- View the rendered diagram, inspect syntax warnings, and download as **SVG** or **PNG**.
+
 ---
 
-## 5. REST API & Curl Examples
+## 4. Quick Start: Command Line Interface (CLI)
 
-### 1. List Endpoints in a Project
-Inspect detected HTTP endpoints before requesting a diagram:
+The CLI runs standalone without starting the web server (`spring.main.web-application-type=none`). Wrapper scripts are provided in `scripts/`.
+
+### Commands
+
+#### List Endpoints
 ```bash
-curl -X GET "http://localhost:8080/api/diagrams/endpoints?path=src/test/resources/fixtures/order-service"
+# Bash
+./scripts/diagram-agent endpoints --path src/test/resources/fixtures/order-service
+
+# Windows PowerShell
+.\scripts\diagram-agent.cmd endpoints --path src/test/resources/fixtures/order-service
 ```
-**Response:**
+
+#### Generate Diagram
+```bash
+# Generate Sequence Diagram to stdout
+./scripts/diagram-agent generate --path src/test/resources/fixtures/order-service --type SEQUENCE --entry "OrderController#payOrder"
+
+# Save directly to file in SVG format
+./scripts/diagram-agent generate --path src/test/resources/fixtures/order-service --type SEQUENCE --entry "OrderController#payOrder" --format svg --out order-flow.svg
+```
+
+#### Git Diff Diagram
+```bash
+# Compare HEAD~1 with HEAD
+./scripts/diagram-agent diff --path . --from HEAD~1 --to HEAD --type FLOWCHART --entry "OrderController#payOrder"
+```
+
+#### Validate Mermaid File
+```bash
+# Validate existing diagram syntax
+./scripts/diagram-agent validate docs/sample-output/sequence.mmd
+# Or shorthand
+./scripts/diagram-agent --validate-only docs/sample-output/sequence.mmd
+```
+
+### CLI Exit Codes
+- `0`: Success
+- `2`: Bad arguments or invalid/forbidden path/git ref
+- `3`: Insufficient information in source code to generate diagram
+- `4`: LLM provider failure (e.g., API error or network issue)
+- `5`: Diagram syntax validation failed
+
+---
+
+## 5. Quick Start: Model Context Protocol (MCP) Server
+
+Diagram Agent can be registered as an MCP tool provider for **Claude Desktop**, **Claude Code**, and **Cursor**.
+
+### Exposed MCP Tools
+1. `list_endpoints(path)`: Lists detected HTTP endpoints (method, path, handler).
+2. `generate_diagram(path, type, entryPoint?, maxDepth?)`: Generates Mermaid code with validation status and warnings.
+3. `diff_diagram(path, fromRef, toRef, type, entryPoint?, maxDepth?)`: Generates a Git diff Mermaid diagram with structured change details.
+4. `render_diagram(mermaid, format)`: Renders Mermaid diagrams into SVG or PNG format.
+
+### Claude Desktop Configuration
+Add the server to your `claude_desktop_config.json` (`%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
 ```json
-[
-  {
-    "httpMethod": "POST",
-    "path": "/orders",
-    "handler": "OrderController#createOrder"
-  },
-  {
-    "httpMethod": "POST",
-    "path": "/orders/{id}/pay",
-    "handler": "OrderController#payOrder"
-  },
-  {
-    "httpMethod": "POST",
-    "path": "/orders/{id}/ship",
-    "handler": "OrderController#shipOrder"
-  },
-  {
-    "httpMethod": "GET",
-    "path": "/orders/{id}",
-    "handler": "OrderController#getOrder"
+{
+  "mcpServers": {
+    "diagram-agent": {
+      "command": "java",
+      "args": [
+        "-Dspring.profiles.active=mcp",
+        "-Dspring.main.web-application-type=none",
+        "-Ddiagram.allowed-root=C:/path/to/your/projects",
+        "-Dspring.ai.google.genai.api-key=YOUR_API_KEY",
+        "-jar",
+        "C:/path/to/chartAgent/build/libs/diagram-agent-0.0.1-SNAPSHOT.jar"
+      ]
+    }
   }
-]
+}
 ```
+
+### Claude Code Registration
+```bash
+claude mcp add diagram-agent -- java -Dspring.profiles.active=mcp -Dspring.main.web-application-type=none -Ddiagram.allowed-root=/path/to/projects -Dspring.ai.google.genai.api-key=YOUR_API_KEY -jar /path/to/chartAgent/build/libs/diagram-agent-0.0.1-SNAPSHOT.jar
+```
+
+### HTTP / SSE Transport
+To expose MCP tools over HTTP/SSE instead of stdio:
+```bash
+java -Dspring.profiles.active=mcp-web -Ddiagram.allowed-root=. -jar build/libs/diagram-agent-0.0.1-SNAPSHOT.jar
+```
+The SSE endpoint is available at `http://localhost:8080/mcp/message`.
 
 ---
 
-### 2. Generate Sequence Diagram (`SEQUENCE`)
+## 6. Quick Start: Docker & Docker Compose
+
+A multi-stage `Dockerfile` is provided with pre-installed Chromium, Node.js 20, and `@mermaid-js/mermaid-cli`, configured with a non-root user and sandboxed puppeteer settings.
+
+### Running with Docker Compose
 ```bash
-curl -X POST "http://localhost:8080/api/diagrams" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "src/test/resources/fixtures/order-service",
-    "type": "SEQUENCE",
-    "entryPoint": "POST /orders/{id}/pay",
-    "maxDepth": 4
-  }'
+# 1. Create your .env file with your API key
+echo "GOOGLE_API_KEY=AIzaSy..." > .env
+
+# 2. Start the service (mounts your projects read-only to /projects)
+DIAGRAM_PROJECTS_DIR="/path/to/my/projects" docker compose up --build
 ```
-**Response:**
+
+### Proxy Configuration in Docker
+If behind a corporate firewall or proxy:
+```bash
+# In .env:
+ALL_PROXY=socks5://host.docker.internal:12080
+HTTPS_PROXY=http://host.docker.internal:12080
+```
+On Windows / Docker Desktop, `host.docker.internal` automatically maps to the host machine gateway.
+
+---
+
+## 7. REST API Reference
+
+### `POST /api/diagrams`
+Generates a diagram from code structure.
 ```json
 {
+  "path": "src/test/resources/fixtures/order-service",
   "type": "SEQUENCE",
-  "mermaid": "sequenceDiagram\n    Client->>OrderController: POST /orders/{id}/pay\n    OrderController->>OrderService: payOrder(id)\n    ...",
-  "valid": true,
-  "attempts": 1,
-  "warnings": []
+  "entryPoint": "OrderController#payOrder",
+  "maxDepth": 4,
+  "format": "MERMAID"
 }
 ```
+`format` supports: `MERMAID` (default), `SVG`, `PNG`. When `SVG` or `PNG` is specified, the response includes `image` (base64-encoded) and `contentType`.
 
----
-
-### 3. Generate Flowchart (`FLOWCHART`)
-```bash
-curl -X POST "http://localhost:8080/api/diagrams" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "src/test/resources/fixtures/order-service",
-    "type": "FLOWCHART",
-    "entryPoint": "OrderController#payOrder",
-    "maxDepth": 4
-  }'
-```
-**Response:**
+### `POST /api/diagrams/diff`
+Generates a visual Git diff diagram between two commits.
 ```json
 {
-  "type": "FLOWCHART",
-  "mermaid": "flowchart TD\n    start([Start: POST /orders/{id}/pay]) --> findOrder[OrderRepository.findById]\n    ...",
-  "valid": true,
-  "attempts": 1,
-  "warnings": []
-}
-```
-
----
-
-### 4. Generate State Diagram (`STATE`)
-`STATE` scans the project for enums, entity status fields, assignments, conditions, and state machine configurations:
-```bash
-curl -X POST "http://localhost:8080/api/diagrams" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "src/test/resources/fixtures/order-service",
-    "type": "STATE"
-  }'
-```
-**Response:**
-```json
-{
-  "type": "STATE",
-  "mermaid": "stateDiagram-v2\n    [*] --> NEW: OrderService#createOrder\n    NEW --> PAID: OrderService#payOrder\n    ...",
-  "valid": true,
-  "attempts": 1,
-  "warnings": []
-}
-```
-
-### 5. Export Diagram to Image (`SVG` / `PNG`)
-You can request the diagram directly formatted as SVG or PNG by specifying `"format": "SVG"` or `"format": "PNG"`:
-```bash
-curl -X POST "http://localhost:8080/api/diagrams" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "src/test/resources/fixtures/order-service",
-    "type": "FLOWCHART",
-    "format": "SVG"
-  }'
-```
-**Windows PowerShell:**
-```powershell
-$body = @{
-    path = "src/test/resources/fixtures/order-service"
-    type = "FLOWCHART"
-    format = "SVG"
-} | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/diagrams" -ContentType "application/json" -Body $body
-```
-**Response:**
-```json
-{
-  "type": "FLOWCHART",
-  "mermaid": "flowchart TD\n ...",
-  "valid": true,
-  "attempts": 1,
-  "warnings": [],
-  "cached": false,
-  "image": "<base64-encoded-image>",
-  "contentType": "image/svg+xml"
-}
-```
-
----
-
-### 6. Render Raw Mermaid Bytes (`POST /api/diagrams/render`)
-Renders any Mermaid diagram string into raw SVG or PNG bytes with appropriate `Content-Type`:
-```bash
-curl -X POST "http://localhost:8080/api/diagrams/render" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mermaid": "flowchart TD\n  A[Start] --> B[Finish]",
-    "format": "SVG"
-  }' --output diagram.svg
-```
-**Windows PowerShell:**
-```powershell
-$body = @{
-    mermaid = "flowchart TD`n  A[Start] --> B[Finish]"
-    format = "SVG"
-} | ConvertTo-Json
-Invoke-WebRequest -Method Post -Uri "http://localhost:8080/api/diagrams/render" -ContentType "application/json" -Body $body -OutFile "diagram.svg"
-```
-
----
-
-### 7. Git Diff Diagram (`POST /api/diagrams/diff`)
-Compares two Git references (commits, branches, or tags) without modifying the local working tree:
-- Uses **JGit** in-memory blob extraction to parse both revisions with identical AST extractors.
-- Computes deterministic structural diffs in code: added/removed/changed endpoints, classes, methods, calls, enums, and state transitions.
-- Renders a color-highlighted Mermaid diagram:
-  - **Added** elements highlighted in green (`:::added` / `rect rgb(220, 252, 231)`).
-  - **Removed** elements highlighted in red/dashed (`:::removed` / `rect rgb(254, 226, 226)`).
-  - **Modified** elements highlighted in amber (`:::modified` / `rect rgb(254, 243, 199)`).
-- Returns a machine-readable `changes` list and plain-text `summary`.
-
-**Bash:**
-```bash
-curl -X POST "http://localhost:8080/api/diagrams/diff" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": ".",
-    "fromRef": "HEAD~1",
-    "toRef": "HEAD",
-    "type": "FLOWCHART",
-    "entryPoint": "OrderController#payOrder",
-    "maxDepth": 4
-  }'
-```
-
-**Windows PowerShell:**
-```powershell
-$body = @{
-    path = "."
-    fromRef = "HEAD~1"
-    toRef = "HEAD"
-    type = "FLOWCHART"
-    entryPoint = "OrderController#payOrder"
-    maxDepth = 4
-} | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/diagrams/diff" -ContentType "application/json" -Body $body
-```
-
-**Response:**
-```json
-{
-  "type": "FLOWCHART",
+  "path": ".",
   "fromRef": "HEAD~1",
   "toRef": "HEAD",
-  "mermaid": "flowchart TD\n  classDef added fill:#dcfce7,stroke:#16a34a,stroke-width:2px;\n  ...",
-  "valid": true,
-  "attempts": 1,
-  "warnings": [],
-  "changes": [
-    {
-      "type": "CALL",
-      "name": "OrderService#payOrder -> NotificationService.notifyCustomer",
-      "status": "ADDED",
-      "details": "Call added"
-    }
-  ],
-  "summary": "Detected 1 changes: 1 added, 0 removed, 0 modified."
+  "type": "FLOWCHART",
+  "entryPoint": "OrderController#payOrder",
+  "format": "MERMAID"
 }
 ```
 
----
-
-### 8. Clear ServiceModel and Result Cache
-```bash
-curl -X DELETE "http://localhost:8080/api/diagrams/cache"
-```
-**Windows PowerShell:**
-```powershell
-Invoke-RestMethod -Method Delete -Uri "http://localhost:8080/api/diagrams/cache"
-```
-**Response:**
+### `POST /api/diagrams/render`
+Renders raw Mermaid syntax to image bytes (`Content-Type: image/svg+xml` or `image/png`).
 ```json
 {
-  "status": "CLEARED",
-  "message": "ServiceModel and DiagramResult caches have been cleared."
+  "mermaid": "flowchart TD\nStart --> End",
+  "format": "SVG"
 }
 ```
 
----
+### `GET /api/diagrams/endpoints?path=...`
+Detects and lists all Spring MVC / Web endpoints in the target project.
 
-## 5. Web UI (Offline & Bundled)
-
-A lightweight single-page web application is served at `http://localhost:8080/`:
-- **Offline & Private**: Bundles `mermaid.min.js` directly within static resources (no external CDN calls, leaks nothing).
-- **Interactive Controls**:
-  - Input project path relative to `DIAGRAM_ROOT`.
-  - Button to query and populate Spring endpoints dropdown.
-  - Select diagram type (`SEQUENCE`, `FLOWCHART`, `STATE`) and depth limit.
-  - Real-time in-browser rendering with syntax validation indicators and warnings.
-  - One-click **Copy Mermaid**, **Download SVG**, and **Download PNG** buttons.
-  - Light and dark theme friendly (`prefers-color-scheme`).
+### `DELETE /api/diagrams/cache`
+Invalidates and clears the in-memory ServiceModel AST and DiagramResult caches.
 
 ---
 
-## 6. ServiceModel & Diagram Result Caching
+## 8. Continuous Integration (GitHub Actions)
 
-To avoid re-scanning and re-parsing thousands of Java files on repeated requests, Diagram Agent features an in-memory Caffeine cache:
-- **`diagram.cache.enabled`** (default: `true`): Enables caching of parsed `ServiceModel` structures.
-- **`diagram.cache.max-projects`** (default: `5`): Maximum distinct project models cached in memory.
-- **`diagram.cache.ttl-minutes`** (default: `30`): Time-to-live before cached models expire.
-- **`diagram.cache.results`** (default: `false`): When `true`, caches final diagram results keyed by source tree fingerprint, diagram type, entry point, max depth, model name, and prompt version, skipping LLM invocation for identical requests. Responses indicate whether results were cached via `"cached": true/false`.
-- **Automatic Invalidation**: On each request, Diagram Agent computes a high-speed fingerprint of `.java` relative paths, sizes, and timestamps. If any file changes, the cache is invalidated automatically without serving stale data.
+Example workflow to automatically generate and validate architecture diagrams on PR:
 
----
-
-## 6. Mermaid Validation & Automated Retries
-
-### Validation Strategy
-1. **Primary Validator (`mmdc` / mermaid-cli)**:
-   - If installed on `PATH` or configured via `diagram.mermaid-cli-path`, `MermaidValidator` executes `mmdc` in a sandbox temp file. Any rendering syntax errors are captured from `stderr`.
-2. **Fallback Structural Validator**:
-   - If `mmdc` is not found, the validator executes a structural check:
-     - Header keywords match diagram type (`sequenceDiagram`, `flowchart TD`, `stateDiagram-v2`).
-     - Balanced block markers (`alt/else/opt/loop/par` and `end`, or braces `{}`).
-     - Rejection of leftover markdown code fences (` ``` `).
-     - Non-empty diagram body.
-     - Adds a warning: `"Full mermaid-cli (mmdc) validation was skipped; structural check applied."`
-
-### Enabling `mmdc` Validation
-To enable full CLI validation, install Mermaid CLI either locally as a development dependency or globally:
-
-```bash
-# Option A: Install locally in project
-npm install --save-dev @mermaid-js/mermaid-cli
-
-# Option B: Install globally
-npm install -g @mermaid-js/mermaid-cli
-```
-
-If installed locally, Diagram Agent automatically detects `node_modules/.bin/mmdc.cmd` (or `node_modules/.bin/mmdc` on Unix). You can also explicitly configure the path using `diagram.mermaid-cli-path` in `application.yml`:
 ```yaml
-diagram:
-  mermaid-cli-path: node_modules/.bin/mmdc.cmd
+name: Generate Architecture Diagram
+
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/**'
+
+jobs:
+  diagram:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Generate Sequence Diagram
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          ./gradlew bootJar -q
+          ./scripts/diagram-agent generate --path . --type SEQUENCE --entry "OrderController#payOrder" --out pr-flow.mmd
+
+      - name: Validate Diagram
+        run: |
+          ./scripts/diagram-agent validate pr-flow.mmd
 ```
 
-### Automated Correction Loop (`DiagramRetryService`)
-If the model produces invalid Mermaid code:
-1. `DiagramRetryService` captures the exact syntax error message from the validator.
-2. It prompts the Gemini model with the previous output and the error, asking for the corrected diagram.
-3. It retries up to `diagram.max-retries` (default 2).
-4. If still invalid after max attempts, it returns the final attempt with `valid: false` and the error listed under `warnings`.
-
 ---
 
-## 7. Agentic Mode (`diagram.agentic=true`)
+## 9. Privacy Notice
 
-When enabled via configuration (`diagram.agentic: true`), Spring AI provides read-only tool functions (`@Tool`) to Gemini:
-- `listClasses()`: Scans and lists class names and stereotypes.
-- `getClassSummary(className)`: Retrieves class dependencies, methods, and packages.
-- `readMethodSource(className, methodName)`: Reads source of a method, truncated to safe size.
-- `findCallers(className, methodName)`: Searches all methods that call the specified method.
-
-All tool executions are restricted strictly within the verified `PathGuard` workspace.
-
----
-
-## 8. Subfolder & Module Scans
-
-The `path` parameter in API requests (`POST /api/diagrams` and `GET /api/diagrams/endpoints`) supports:
-- Repository root: `.` or an absolute path within `diagram.allowed-root`.
-- Subfolders / Gradle submodules: e.g. `service-core` or `src/main/java/com/example/orderservice`.
-When pointing to a subfolder without a dedicated `src/main/java` hierarchy, the scanner traverses `.java` files directly under that subfolder.
-
----
-
-## 9. Security & Guardrails
-
-- **Path Confinement (`PathGuard`)**: `diagram.allowed-root` is mandatory. All requested paths are resolved against this root, normalized, and evaluated with `toRealPath()` to block directory traversal (`../`), absolute paths outside root, and symlink escapes.
-- **No Code Execution**: Scanned Java code is parsed strictly as abstract syntax trees (ASTs) using JavaParser. Project binaries or classes are never loaded or executed.
-- **Resource Caps**: Scans are bounded by `diagram.max-files-scanned` (default `5000`, configurable via `DIAGRAM_MAX_FILES_SCANNED`) and `diagram.max-file-size-bytes` (default 1MB). When file limits are exceeded, classes are prioritized by architectural significance (Controllers > Services > Repositories/Clients > Configurations > Others).
-- **Fast Failure (422)**: If an entry point class is missing from the scanned model (e.g. invalid name or excluded by scan limits), the agent immediately fails with `422 Unprocessable Entity` rather than making an uninformative LLM call.
-- **Privacy Notice**: Extracted structural metadata (class names, method signatures, call flows, enum values) is transmitted to Google's Gemini API for diagram generation. Users must ensure compliance with their organization's data privacy policies.
-
----
-
-## 9. Error Handling (RFC 7807 Problem Details)
-
-All exceptions return standard RFC 7807 `application/problem+json`:
-- `400 Bad Request`: Invalid or escaping path, or malformed request parameters.
-- `404 Not Found`: No `.java` files found under `src/main/java` in the specified directory.
-- `422 Unprocessable Entity`: The model or project lacks required information (e.g. no state machine or enums for a `STATE` diagram).
-- `502 Bad Gateway`: LLM provider failures (e.g. safety filter blocking).
-- `429 Too Many Requests`: Upstream Gemini rate limits after backoff retries are exhausted.
-- `504 Gateway Timeout`: Processing timeouts.
-
----
-
-## 10. Sample Output
-
-Reference diagrams generated from the included test fixture project (`order-service`) are located in:
-- [sequence.mmd](file:///docs/sample-output/sequence.mmd)
-- [flowchart.mmd](file:///docs/sample-output/flowchart.mmd)
-- [state.mmd](file:///docs/sample-output/state.mmd)
-
----
-
-## 11. Known Limitations
-
-- **Language Support**: Strictly Java 17+ Spring Boot services adhering to standard `src/main/java` structure.
-- **Dynamic Reflection**: Dynamically dispatched calls (e.g., reflection, Spring SpEL expressions) cannot be resolved via static AST parsing.
-- **Gemini Thinking Models**: When using experimental thinking models (e.g., `gemini-2.0-flash-thinking`), internal thinking tokens count toward the overall output limit. Ensure `max-output-tokens` is sized appropriately (4000+).
+**Data Privacy Policy**:
+- Diagram Agent **never** transmits entire source code files to the LLM.
+- Extracted structural metadata (class names, method signatures, call flows, and enum constant names) is transmitted to the configured Google Gemini model API endpoint for diagram generation.
+- No project code or credentials are ever logged, cached on disk, or committed to version control.

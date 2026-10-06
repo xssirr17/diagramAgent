@@ -1,0 +1,22 @@
+flowchart TD
+    %% Base styling definitions for Git diff elements
+    classDef added fill:#e6ffed,stroke:#2ea44f,stroke-width:2px;
+    classDef removed fill:#ffeef0,stroke:#cb2431,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef changed fill:#fff8c5,stroke:#b08800,stroke-width:2px;
+
+    start([Start: POST /orders/{id}/pay])
+    findOrder[OrderRepository.findById]
+    checkStatus{Is status PENDING?}
+    payMethod[Order.pay]:::changed
+    newFraudCheck[FraudCheckService.verify]:::added
+    oldValidation[LegacyValidator.validate]:::removed
+    saveOrder[OrderRepository.save]
+    endNode([End: 200 OK / OrderResponse])
+
+    start --> findOrder
+    findOrder --> checkStatus
+    checkStatus -->|yes| newFraudCheck
+    newFraudCheck --> payMethod
+    payMethod --> saveOrder
+    saveOrder --> endNode
+    checkStatus -.->|deprecated flow| oldValidation
