@@ -1,0 +1,55 @@
+services:
+  diagram-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: diagram-agent
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount projects directory read-only to /projects
+      - type: bind
+        source: ${DIAGRAM_PROJECTS_DIR:-./src/test/resources/fixtures}
+        target: /projects
+        read_only: true
+    environment:
+      - DIAGRAM_ROOT=/projects
+      - ALL_PROXY=${ALL_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      # On Windows / Docker Desktop, host proxy can be reached via host.docker.internal
+      # e.g.: ALL_PROXY=socks5://host.docker.internal:12080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Optional MCP Server over stdio or web
+  diagram-agent-mcp:
+    profiles:
+      - mcp
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: diagram-agent-mcp
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - type: bind
+        source: ${DIAGRAM_PROJECTS_DIR:-./src/test/resources/fixtures}
+        target: /projects
+        read_only: true
+    environment:
+      - SPRING_PROFILES_ACTIVE=mcp,gemini-api
+      - SPRING_AI_MCP_SERVER_STDIO=true
+      - DIAGRAM_ROOT=/projects
+      - ALL_PROXY=${ALL_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stdin_open: true
+    tty: true
