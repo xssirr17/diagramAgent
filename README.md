@@ -269,7 +269,68 @@ Invoke-WebRequest -Method Post -Uri "http://localhost:8080/api/diagrams/render" 
 
 ---
 
-### 7. Clear ServiceModel and Result Cache
+### 7. Git Diff Diagram (`POST /api/diagrams/diff`)
+Compares two Git references (commits, branches, or tags) without modifying the local working tree:
+- Uses **JGit** in-memory blob extraction to parse both revisions with identical AST extractors.
+- Computes deterministic structural diffs in code: added/removed/changed endpoints, classes, methods, calls, enums, and state transitions.
+- Renders a color-highlighted Mermaid diagram:
+  - **Added** elements highlighted in green (`:::added` / `rect rgb(220, 252, 231)`).
+  - **Removed** elements highlighted in red/dashed (`:::removed` / `rect rgb(254, 226, 226)`).
+  - **Modified** elements highlighted in amber (`:::modified` / `rect rgb(254, 243, 199)`).
+- Returns a machine-readable `changes` list and plain-text `summary`.
+
+**Bash:**
+```bash
+curl -X POST "http://localhost:8080/api/diagrams/diff" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": ".",
+    "fromRef": "HEAD~1",
+    "toRef": "HEAD",
+    "type": "FLOWCHART",
+    "entryPoint": "OrderController#payOrder",
+    "maxDepth": 4
+  }'
+```
+
+**Windows PowerShell:**
+```powershell
+$body = @{
+    path = "."
+    fromRef = "HEAD~1"
+    toRef = "HEAD"
+    type = "FLOWCHART"
+    entryPoint = "OrderController#payOrder"
+    maxDepth = 4
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/diagrams/diff" -ContentType "application/json" -Body $body
+```
+
+**Response:**
+```json
+{
+  "type": "FLOWCHART",
+  "fromRef": "HEAD~1",
+  "toRef": "HEAD",
+  "mermaid": "flowchart TD\n  classDef added fill:#dcfce7,stroke:#16a34a,stroke-width:2px;\n  ...",
+  "valid": true,
+  "attempts": 1,
+  "warnings": [],
+  "changes": [
+    {
+      "type": "CALL",
+      "name": "OrderService#payOrder -> NotificationService.notifyCustomer",
+      "status": "ADDED",
+      "details": "Call added"
+    }
+  ],
+  "summary": "Detected 1 changes: 1 added, 0 removed, 0 modified."
+}
+```
+
+---
+
+### 8. Clear ServiceModel and Result Cache
 ```bash
 curl -X DELETE "http://localhost:8080/api/diagrams/cache"
 ```

@@ -2,6 +2,9 @@ package com.example.diagramagent.api;
 
 import com.example.diagramagent.agent.DiagramAgent;
 import com.example.diagramagent.cache.ServiceModelCache;
+import com.example.diagramagent.diff.GitService;
+import com.example.diagramagent.diff.ModelDiffer;
+import com.example.diagramagent.diff.StructuralDiff;
 import com.example.diagramagent.render.DiagramFormat;
 import com.example.diagramagent.render.DiagramRenderer;
 import com.example.diagramagent.scan.EndpointInfo;
@@ -31,17 +34,23 @@ public class DiagramController {
     private final ServiceModelCache serviceModelCache;
     private final DiagramAgent diagramAgent;
     private final DiagramRenderer diagramRenderer;
+    private final GitService gitService;
+    private final ModelDiffer modelDiffer;
 
     public DiagramController(
         PathGuard pathGuard,
         ServiceModelCache serviceModelCache,
         DiagramAgent diagramAgent,
-        DiagramRenderer diagramRenderer
+        DiagramRenderer diagramRenderer,
+        GitService gitService,
+        ModelDiffer modelDiffer
     ) {
         this.pathGuard = pathGuard;
         this.serviceModelCache = serviceModelCache;
         this.diagramAgent = diagramAgent;
         this.diagramRenderer = diagramRenderer;
+        this.gitService = gitService;
+        this.modelDiffer = modelDiffer;
     }
 
     @PostMapping
@@ -112,6 +121,52 @@ public class DiagramController {
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_TYPE, request.format().contentType())
             .body(imageBytes);
+    }
+
+    @PostMapping("/diff")
+    public ResponseEntity<DiffResponse> generateDiffDiagram(@Valid @RequestBody DiffRequest request) {
+        Path resolvedPath = pathGuard.validateAndResolve(request.effectivePath());
+        int maxDepth = request.maxDepth() != null && request.maxDepth() > 0 ? request.maxDepth() : 4;
+        String fromRef = request.resolvedFromRef();
+        String toRef = request.resolvedToRef();
+
+        ServiceModel fromModel = gitService.extractModelAtRef(resolvedPath, fromRef);
+        ServiceModel toModel = gitService.extractModelAtRef(resolvedPath, toRef);
+
+        StructuralDiff diff = modelDiffer.diff(fromModel, toModel, request.type(), request.entryPoint());
+
+        DiagramAgent.DiagramResult result = diagramAgent.generateDiffDiagram(
+            resolvedPath,
+            fromModel,
+            toModel,
+            diff,
+            request.type(),
+            request.entryPoint(),
+            maxDepth
+        );
+
+        DiagramFormat format = request.resolvedFormat();
+        String imageBase64 = null;
+        String contentType = null;
+        if (format != DiagramFormat.MERMAID) {
+            byte[] bytes = diagramRenderer.render(result.mermaid(), format);
+            imageBase64 = Base64.getEncoder().encodeToString(bytes);
+            contentType = format.contentType();
+        }
+
+        return ResponseEntity.ok(new DiffResponse(
+            result.type(),
+            fromRef,
+            toRef,
+            result.mermaid(),
+            result.valid(),
+            result.attempts(),
+            result.warnings(),
+            diff.changes(),
+            diff.summary(),
+            imageBase64,
+            contentType
+        ));
     }
 
     @GetMapping("/endpoints")

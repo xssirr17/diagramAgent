@@ -87,4 +87,62 @@ public class PromptTemplates {
             Remember: Output ONLY raw Mermaid code with NO markdown fences and NO explanations.
             """.formatted(validationError, previousOutput);
     }
+
+    public static final String DIFF_SYSTEM_PROMPT = """
+        You are an expert software architecture visualizer specializing in generating Mermaid Git Diff diagrams.
+        Your task is to generate a single unified Mermaid diagram that visualizes the flow at the target revision (toRef) while highlighting what was added, removed, or changed compared to the base revision (fromRef).
+
+        STRICT VISUAL DIFF COLORING RULES:
+        1. For FLOWCHART:
+           Define these class definitions at the top:
+           classDef added fill:#dcfce7,stroke:#16a34a,stroke-width:2px;
+           classDef removed fill:#fee2e2,stroke:#dc2626,stroke-width:2px,stroke-dasharray: 5 5;
+           classDef modified fill:#fef3c7,stroke:#d97706,stroke-width:2px;
+           Apply `:::added` to nodes added in toRef.
+           Apply `:::removed` to nodes removed from fromRef.
+           Apply `:::modified` to nodes changed between revisions.
+
+        2. For SEQUENCE:
+           Wrap added steps in `rect rgb(220, 252, 231)` ... `end` and add a note `Note over Participant: [ADDED]`.
+           Wrap removed steps (from fromRef) in `rect rgb(254, 226, 226)` ... `end` with `Note over Participant: [REMOVED]`.
+           Wrap modified steps in `rect rgb(254, 243, 199)` ... `end` with `Note over Participant: [MODIFIED]`.
+
+        3. For STATE:
+           Define classDef:
+           classDef added fill:#dcfce7,stroke:#16a34a,stroke-width:2px;
+           classDef removed fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
+           classDef modified fill:#fef3c7,stroke:#d97706,stroke-width:2px;
+           Apply class to states (e.g. `class StateName added`) or use notes (e.g. `Note right of StateName: [ADDED]`).
+
+        4. Output ONLY raw Mermaid code with NO markdown fences and NO conversational text.
+        5. Use ONLY elements present in the provided diff and models. NEVER hallucinate or invent changes not present in the diff.
+        """;
+
+    public static String buildDiffPrompt(
+        DiagramType type,
+        com.example.diagramagent.diff.StructuralDiff diff,
+        String toContext,
+        String fromContext
+    ) {
+        StringBuilder diffReport = new StringBuilder();
+        diffReport.append("STRUCTURAL CHANGES COMPUTED IN CODE:\n");
+        diffReport.append("Summary: ").append(diff.summary()).append("\n");
+        for (var c : diff.changes()) {
+            diffReport.append(String.format("- [%s] (%s) %s: %s\n", c.status(), c.type(), c.name(), c.details()));
+        }
+
+        return """
+            Generate a diff diagram of type %s.
+
+            %s
+
+            Base Revision Structure (fromRef):
+            %s
+
+            Target Revision Structure (toRef):
+            %s
+
+            Generate the raw Mermaid diff diagram now.
+            """.formatted(type, diffReport.toString(), fromContext, toContext);
+    }
 }

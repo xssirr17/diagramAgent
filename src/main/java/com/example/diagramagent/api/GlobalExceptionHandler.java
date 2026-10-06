@@ -24,6 +24,33 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(com.example.diagramagent.diff.InvalidGitRefException.class)
+    public ProblemDetail handleInvalidGitRef(com.example.diagramagent.diff.InvalidGitRefException ex) {
+        log.warn("Invalid git ref: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        pd.setTitle("Invalid Git Ref");
+        pd.setType(URI.create("urn:problem:invalid-git-ref"));
+        return pd;
+    }
+
+    @ExceptionHandler(com.example.diagramagent.diff.NotAGitRepositoryException.class)
+    public ProblemDetail handleNotAGitRepo(com.example.diagramagent.diff.NotAGitRepositoryException ex) {
+        log.warn("Not a git repository: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        pd.setTitle("Not A Git Repository");
+        pd.setType(URI.create("urn:problem:not-a-git-repo"));
+        return pd;
+    }
+
+    @ExceptionHandler(com.example.diagramagent.diff.UnknownGitRefException.class)
+    public ProblemDetail handleUnknownGitRef(com.example.diagramagent.diff.UnknownGitRefException ex) {
+        log.warn("Unknown git ref: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        pd.setTitle("Unknown Git Ref");
+        pd.setType(URI.create("urn:problem:unknown-git-ref"));
+        return pd;
+    }
+
     @ExceptionHandler(PathNotFoundException.class)
     public ProblemDetail handlePathNotFound(PathNotFoundException ex) {
         log.warn("Path not found: {}", ex.getMessage());

@@ -233,5 +233,65 @@ public class DiagramAgent {
         }
         return null;
     }
+
+    public DiagramResult generateDiffDiagram(
+        Path projectPath,
+        ServiceModel fromModel,
+        ServiceModel toModel,
+        com.example.diagramagent.diff.StructuralDiff diff,
+        DiagramType type,
+        String entryPoint,
+        int maxDepth
+    ) {
+        List<String> warnings = new ArrayList<>();
+        warnings.addAll(toModel.warnings());
+
+        if (diff.entryPointUnchanged() && entryPoint != null && !entryPoint.isBlank()) {
+            warnings.add("The entry point flow is unchanged between revisions.");
+        }
+
+        int depth = maxDepth > 0 ? maxDepth : properties.maxDepth();
+        int halfChars = properties.maxContextChars() / 2;
+        String toContext = toModel.toPromptContext(type, entryPoint, depth, halfChars);
+        String fromContext = fromModel.toPromptContext(type, entryPoint, depth, halfChars);
+
+        String userPrompt = PromptTemplates.buildDiffPrompt(type, diff, toContext, fromContext);
+
+        try {
+            String rawOutput = callModel(PromptTemplates.DIFF_SYSTEM_PROMPT, userPrompt, false);
+            String sanitized = MermaidSanitizer.sanitize(rawOutput);
+
+            if (MermaidSanitizer.isInsufficientInformation(sanitized)) {
+                String reason = MermaidSanitizer.extractInsufficientReason(sanitized);
+                throw new InsufficientInformationException(reason);
+            }
+
+            var retryResult = retryService.executeWithRetry(
+                sanitized,
+                type,
+                warnings,
+                retryPrompt -> {
+                    String corrected = callModel(PromptTemplates.DIFF_SYSTEM_PROMPT, retryPrompt, false);
+                    return MermaidSanitizer.sanitize(corrected);
+                }
+            );
+
+            return new DiagramResult(
+                type,
+                retryResult.mermaid(),
+                retryResult.valid(),
+                retryResult.attempts(),
+                retryResult.warnings(),
+                false
+            );
+        } catch (InsufficientInformationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to generate diff diagram: {}", e.getMessage(), e);
+            if (e instanceof ProviderException pe) throw pe;
+            if (e instanceof RateLimitExceededException rle) throw rle;
+            throw new ProviderException("Failed to generate diff diagram: " + e.getMessage(), e);
+        }
+    }
 }
 

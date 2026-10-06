@@ -44,6 +44,12 @@ class DiagramControllerTest {
     @MockBean
     private com.example.diagramagent.render.DiagramRenderer diagramRenderer;
 
+    @MockBean
+    private com.example.diagramagent.diff.GitService gitService;
+
+    @MockBean
+    private com.example.diagramagent.diff.ModelDiffer modelDiffer;
+
     @Test
     void postDiagramReturns200WithMermaid() throws Exception {
         Path mockPath = Paths.get("/safe/root/project");
@@ -198,5 +204,50 @@ class DiagramControllerTest {
             .andExpect(status().isOk())
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Type", "image/svg+xml"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string("<svg>rendered</svg>"));
+    }
+
+    @Test
+    void postDiffDiagramReturns200() throws Exception {
+        Path mockPath = Paths.get("/safe/root/project");
+        when(pathGuard.validateAndResolve(any())).thenReturn(mockPath);
+
+        ServiceModel m1 = new ServiceModel(List.of(), List.of(), List.of(), List.of(), List.of());
+        ServiceModel m2 = new ServiceModel(List.of(), List.of(), List.of(), List.of(), List.of());
+        when(gitService.extractModelAtRef(mockPath, "HEAD~1")).thenReturn(m1);
+        when(gitService.extractModelAtRef(mockPath, "HEAD")).thenReturn(m2);
+
+        com.example.diagramagent.diff.StructuralDiff mockDiff = new com.example.diagramagent.diff.StructuralDiff(
+            List.of(new com.example.diagramagent.diff.StructuralChange(
+                com.example.diagramagent.diff.ChangeType.CALL, "payOrder -> notify", com.example.diagramagent.diff.ChangeStatus.ADDED, "details"
+            )),
+            "1 added",
+            false
+        );
+        when(modelDiffer.diff(eq(m1), eq(m2), eq(DiagramType.FLOWCHART), any())).thenReturn(mockDiff);
+
+        DiagramAgent.DiagramResult agentResult = new DiagramAgent.DiagramResult(
+            DiagramType.FLOWCHART, "flowchart TD\nA-->B:::added", true, 1, List.of()
+        );
+        when(diagramAgent.generateDiffDiagram(eq(mockPath), eq(m1), eq(m2), eq(mockDiff), eq(DiagramType.FLOWCHART), any(), eq(4)))
+            .thenReturn(agentResult);
+
+        String json = """
+            {
+                "path": "sub-dir",
+                "type": "FLOWCHART",
+                "fromRef": "HEAD~1",
+                "toRef": "HEAD"
+            }
+            """;
+
+        mockMvc.perform(post("/api/diagrams/diff")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.type").value("FLOWCHART"))
+            .andExpect(jsonPath("$.fromRef").value("HEAD~1"))
+            .andExpect(jsonPath("$.toRef").value("HEAD"))
+            .andExpect(jsonPath("$.changes[0].name").value("payOrder -> notify"))
+            .andExpect(jsonPath("$.changes[0].status").value("ADDED"));
     }
 }

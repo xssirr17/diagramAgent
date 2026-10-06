@@ -34,6 +34,12 @@ class StaticWebPageTest {
     @MockBean
     private DiagramRenderer diagramRenderer;
 
+    @MockBean
+    private com.example.diagramagent.diff.GitService gitService;
+
+    @MockBean
+    private com.example.diagramagent.diff.ModelDiffer modelDiffer;
+
     @Test
     void indexPageIsServed() throws Exception {
         mockMvc.perform(get("/index.html"))

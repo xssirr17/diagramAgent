@@ -16,6 +16,8 @@ spring-boot-starter-validation = { module = "org.springframework.boot:spring-boo
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine" }
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version = "6.10.0.202406032230-r" }
+picocli = { module = "info.picocli:picocli", version = "4.7.6" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
