@@ -61,4 +61,27 @@ class MermaidSanitizerTest {
         assertTrue(sanitized.startsWith("flowchart TD"));
         assertTrue(sanitized.contains("start([Start])"));
     }
+
+    @Test
+    void unquotesParticipantAliasesAndSanitizesMessageBrackets() {
+        String raw = """
+            sequenceDiagram
+                participant C as "OrderController"
+                participant S as "OrderService"
+                actor U as "User"
+                U->>C: POST /orders/{id}/pay
+                C->>S: findById(id) : Optional<Order>
+                S-->>C: setStatus({PAID})
+            """;
+
+        String sanitized = MermaidSanitizer.sanitize(raw);
+
+        assertTrue(sanitized.contains("participant C as OrderController"), "Participant alias quotes should be stripped");
+        assertTrue(sanitized.contains("participant S as OrderService"), "Participant alias quotes should be stripped");
+        assertTrue(sanitized.contains("actor U as User"), "Actor alias quotes should be stripped");
+        assertTrue(sanitized.contains("POST /orders/(id)/pay"), "Curly braces in message should be sanitized to parentheses");
+        assertTrue(sanitized.contains("findById(id) : Optional~Order~"), "Angle brackets should be sanitized to tildes");
+        assertTrue(sanitized.contains("setStatus((PAID))"), "Curly braces in message should be sanitized");
+        assertFalse(sanitized.contains("<Order>"), "No raw angle brackets in message text");
+    }
 }

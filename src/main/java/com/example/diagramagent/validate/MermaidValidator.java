@@ -52,12 +52,27 @@ public class MermaidValidator {
         Path tempIn = null;
         Path tempOut = null;
         try {
+            String resolvedCli = cliPath;
+            if (resolvedCli == null || resolvedCli.isBlank() || "mmdc".equals(resolvedCli)) {
+                Path localBinWin = Path.of("node_modules", ".bin", "mmdc.cmd");
+                Path localBin = Path.of("node_modules", ".bin", "mmdc");
+                if (Files.exists(localBinWin)) {
+                    resolvedCli = localBinWin.toAbsolutePath().toString();
+                } else if (Files.exists(localBin)) {
+                    resolvedCli = localBin.toAbsolutePath().toString();
+                } else if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+                    resolvedCli = "mmdc.cmd";
+                } else {
+                    resolvedCli = "mmdc";
+                }
+            }
+
             tempIn = Files.createTempFile("diagram-", ".mmd");
             tempOut = Files.createTempFile("diagram-", ".svg");
             Files.writeString(tempIn, mermaid);
 
             ProcessBuilder pb = new ProcessBuilder(
-                cliPath,
+                resolvedCli,
                 "-i", tempIn.toAbsolutePath().toString(),
                 "-o", tempOut.toAbsolutePath().toString()
             );

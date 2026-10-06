@@ -61,7 +61,78 @@ public class MermaidSanitizer {
         // 4. Remove any residual markdown fences
         content = content.replaceAll("(?m)^```[a-zA-Z0-9_-]*\\s*$", "").trim();
 
+        // 5. Post-process Mermaid syntax (strip quotes in participants, sanitize angle/curly brackets)
+        content = postProcessMermaid(content);
+
         return content;
+    }
+
+    public static String postProcessMermaid(String content) {
+        if (content == null || content.isBlank()) return "";
+
+        // Strip quotes from participant / actor declarations:
+        // participant C as "OrderController" -> participant C as OrderController
+        content = content.replaceAll("(?m)^(\\s*(?:participant|actor)\\s+[A-Za-z0-9_]+\\s+as\\s+)\"([^\"]+)\"\\s*$", "$1$2");
+        content = content.replaceAll("(?m)^(\\s*(?:participant|actor)\\s+)\"([^\"]+)\"(\\s+as\\s+[A-Za-z0-9_]+\\s*)$", "$1$2$3");
+        content = content.replaceAll("(?m)^(\\s*(?:participant|actor)\\s+)\"([^\"]+)\"\\s*$", "$1$2");
+
+        boolean isSequence = content.startsWith("sequenceDiagram");
+
+        String[] lines = content.split("\r?\n");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (isSequence) {
+                line = sanitizeSequenceLine(line);
+            } else {
+                line = sanitizeGeneralLine(line);
+            }
+            sb.append(line);
+            if (i < lines.length - 1) {
+                sb.append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String sanitizeSequenceLine(String line) {
+        String trimmed = line.trim();
+        if (trimmed.startsWith("%%")) {
+            return line;
+        }
+
+        // Arrow message: A->>B: message or A-->>B: message
+        // Or note: Note over A: message
+        boolean hasArrow = trimmed.contains("->") || trimmed.contains("--");
+        boolean isNote = trimmed.toLowerCase().startsWith("note ");
+
+        if ((hasArrow || isNote) && trimmed.contains(":")) {
+            int colonIdx = line.indexOf(':');
+            String prefix = line.substring(0, colonIdx + 1);
+            String message = line.substring(colonIdx + 1);
+
+            // Replace <...> with ~...~
+            message = message.replace('<', '~').replace('>', '~');
+            // Replace {...} with (...)
+            message = message.replace('{', '(').replace('}', ')');
+
+            return prefix + message;
+        }
+
+        return line;
+    }
+
+    private static String sanitizeGeneralLine(String line) {
+        String trimmed = line.trim();
+        if (trimmed.startsWith("%%")) {
+            return line;
+        }
+
+        // For flowchart / state diagrams, avoid < and > in labels which trigger unclosed HTML tag errors in mermaid-cli
+        if (line.contains("<") || line.contains(">")) {
+            return line.replace('<', '~').replace('>', '~');
+        }
+        return line;
     }
 
     public static boolean isInsufficientInformation(String output) {

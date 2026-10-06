@@ -31,7 +31,7 @@ public record DiagramProperties(
             mermaidCliPath = "mmdc";
         }
         if (maxFilesScanned <= 0) {
-            maxFilesScanned = 500;
+            maxFilesScanned = 5000;
         }
         if (maxFileSizeBytes <= 0) {
             maxFileSizeBytes = 1048576L; // 1 MB default

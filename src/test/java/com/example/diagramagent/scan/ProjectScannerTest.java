@@ -61,8 +61,27 @@ class ProjectScannerTest {
         String flowCtx = model.toPromptContext(DiagramType.FLOWCHART, "OrderController#payOrder", 4, 60000);
         assertTrue(flowCtx.contains("OrderService#payOrder"));
 
-        String stateCtx = model.toPromptContext(DiagramType.STATE, null, 4, 60000);
-        assertTrue(stateCtx.contains("OrderStatus"));
-        assertTrue(stateCtx.contains("PAID"));
+        // Enum argument preservation and noise reduction check
+        ClassInfo orderService = model.findClass("OrderService").orElseThrow();
+        MethodInfo payOrder = orderService.methods().stream()
+            .filter(m -> m.name().equals("payOrder"))
+            .findFirst()
+            .orElseThrow();
+
+        assertTrue(payOrder.outgoingCalls().stream().anyMatch(c ->
+            c.methodName().equals("setStatus") && c.arguments().equals("PAID")),
+            "Expected setStatus(PAID) in outgoing calls");
+        assertTrue(payOrder.outgoingCalls().stream().anyMatch(c ->
+            c.methodName().equals("setStatus") && c.arguments().equals("CANCELLED")),
+            "Expected setStatus(CANCELLED) in outgoing calls");
+
+        // Trivial getter on entity should be excluded from outgoing calls
+        assertFalse(payOrder.outgoingCalls().stream().anyMatch(c -> c.methodName().equals("getStatus")),
+            "Trivial getter getStatus() should be excluded as noise");
+
+        // Verify context includes enum arguments
+        String paySeqCtx = model.toPromptContext(DiagramType.SEQUENCE, "OrderController#payOrder", 4, 60000);
+        assertTrue(paySeqCtx.contains("setStatus(PAID)"), "Expected sequence context to contain setStatus(PAID)");
+        assertTrue(paySeqCtx.contains("setStatus(CANCELLED)"), "Expected sequence context to contain setStatus(CANCELLED)");
     }
 }

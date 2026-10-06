@@ -227,14 +227,99 @@ public class CallChainExtractor {
         List<CallInfo> callsAccumulator,
         String condition
     ) {
+        // 1. Detect state/status assignments: this.status = OrderStatus.PAID
+        for (com.github.javaparser.ast.expr.AssignExpr assign : node.findAll(com.github.javaparser.ast.expr.AssignExpr.class)) {
+            String target = assign.getTarget().toString();
+            String targetClean = target.startsWith("this.") ? target.substring(5) : target;
+            if (targetClean.toLowerCase(Locale.ROOT).matches(".*(status|state|phase|stage).*")) {
+                String val = cleanArgument(assign.getValue());
+                CallInfo stateCall = new CallInfo(currentClass, "setStatus", val, CallKind.INTERNAL, condition);
+                if (!callsAccumulator.contains(stateCall)) {
+                    callsAccumulator.add(stateCall);
+                }
+            }
+        }
+
+        // 2. Detect method calls
         List<MethodCallExpr> methodCalls = node.findAll(MethodCallExpr.class);
         for (MethodCallExpr call : methodCalls) {
             CallInfo callInfo = resolveCall(call, currentClass, depMap, knownClasses, condition);
-            // Avoid duplicates in the same accumulator
-            if (!callsAccumulator.contains(callInfo)) {
-                callsAccumulator.add(callInfo);
+            if (callInfo != null && !isNoiseCall(callInfo.targetClass(), callInfo.methodName(), callInfo.arguments())) {
+                if (!callsAccumulator.contains(callInfo)) {
+                    callsAccumulator.add(callInfo);
+                }
             }
         }
+    }
+
+    private static final Set<String> COMMON_NOISE_METHODS = Set.of(
+        "tostring", "hashcode", "equals", "builder", "build", "clone"
+    );
+
+    private boolean isNoiseCall(String targetClass, String methodName, String arguments) {
+        String lowerMethod = methodName.toLowerCase(Locale.ROOT);
+        if (COMMON_NOISE_METHODS.contains(lowerMethod)) {
+            return true;
+        }
+
+        // Trivial getters (get... / is... on entity/DTO without arguments)
+        boolean isGetter = (lowerMethod.startsWith("get") && lowerMethod.length() > 3 && arguments.isBlank()) ||
+                           (lowerMethod.startsWith("is") && lowerMethod.length() > 2 && arguments.isBlank());
+        if (isGetter) {
+            String lowerTarget = targetClass.toLowerCase(Locale.ROOT);
+            boolean isServiceOrComponent = lowerTarget.endsWith("service") ||
+                lowerTarget.endsWith("serviceimpl") ||
+                lowerTarget.endsWith("controller") ||
+                lowerTarget.endsWith("repository") ||
+                lowerTarget.endsWith("client") ||
+                lowerTarget.endsWith("feign") ||
+                lowerTarget.endsWith("dao");
+            if (!isServiceOrComponent) {
+                return true;
+            }
+        }
+
+        // Trivial setters: set... on entities / DTOs, EXCEPT status/state setters!
+        if (lowerMethod.startsWith("set") && lowerMethod.length() > 3) {
+            boolean isStatusSetter = lowerMethod.contains("status") ||
+                lowerMethod.contains("state") ||
+                lowerMethod.contains("phase") ||
+                lowerMethod.contains("stage") ||
+                arguments.matches("^[A-Z0-9_]+$"); // uppercase enum constant
+            if (!isStatusSetter) {
+                String lowerTarget = targetClass.toLowerCase(Locale.ROOT);
+                boolean isServiceOrComponent = lowerTarget.endsWith("service") ||
+                    lowerTarget.endsWith("controller") ||
+                    lowerTarget.endsWith("repository") ||
+                    lowerTarget.endsWith("client");
+                if (!isServiceOrComponent) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private String cleanArgument(Expression expr) {
+        if (expr == null) return "";
+        if (expr.isFieldAccessExpr()) {
+            return expr.asFieldAccessExpr().getNameAsString();
+        }
+        if (expr.isNameExpr()) {
+            return expr.asNameExpr().getNameAsString();
+        }
+        if (expr.isStringLiteralExpr()) {
+            return "\"" + expr.asStringLiteralExpr().getValue() + "\"";
+        }
+        if (expr.isLiteralExpr()) {
+            return expr.toString();
+        }
+        if (expr.isMethodCallExpr()) {
+            MethodCallExpr m = expr.asMethodCallExpr();
+            return m.getNameAsString() + "()";
+        }
+        return expr.toString();
     }
 
     private CallInfo resolveCall(
@@ -245,7 +330,9 @@ public class CallChainExtractor {
         String condition
     ) {
         String methodName = call.getNameAsString();
-        String arguments = call.getArguments().stream().map(Node::toString).collect(Collectors.joining(", "));
+        String arguments = call.getArguments().stream()
+            .map(this::cleanArgument)
+            .collect(Collectors.joining(", "));
         Optional<Expression> scopeOpt = call.getScope();
 
         if (scopeOpt.isEmpty() || scopeOpt.get().toString().equals("this")) {
@@ -253,9 +340,17 @@ public class CallChainExtractor {
         }
 
         String scopeStr = scopeOpt.get().toString();
-        // E.g. scopeStr could be "orderRepository" or "this.orderRepository"
         if (scopeStr.startsWith("this.")) {
             scopeStr = scopeStr.substring(5);
+        }
+
+        // If scopeStr matches a known class simple name (e.g. order -> Order, or Order -> Order)
+        String resolvedTargetClass = scopeStr;
+        for (String simple : knownClasses.keySet()) {
+            if (simple.equalsIgnoreCase(scopeStr)) {
+                resolvedTargetClass = simple;
+                break;
+            }
         }
 
         // If scopeStr is a dependency of the class
@@ -264,19 +359,18 @@ public class CallChainExtractor {
             if (knownClasses.containsKey(depType)) {
                 return new CallInfo(depType, methodName, arguments, CallKind.INTERNAL, condition);
             }
-            // Dependency is external or not in known classes
             CallKind kind = classifyExternal(depType, scopeStr, methodName);
             return new CallInfo(depType, methodName, arguments, kind, condition);
         }
 
         // If scopeStr is directly the class name of a known class (static call)
-        if (knownClasses.containsKey(scopeStr)) {
-            return new CallInfo(scopeStr, methodName, arguments, CallKind.INTERNAL, condition);
+        if (knownClasses.containsKey(resolvedTargetClass)) {
+            return new CallInfo(resolvedTargetClass, methodName, arguments, CallKind.INTERNAL, condition);
         }
 
         // Fallback: classify based on variable/method name
-        CallKind kind = classifyExternal(scopeStr, scopeStr, methodName);
-        return new CallInfo(scopeStr, methodName, arguments, kind, condition);
+        CallKind kind = classifyExternal(resolvedTargetClass, scopeStr, methodName);
+        return new CallInfo(resolvedTargetClass, methodName, arguments, kind, condition);
     }
 
     private CallKind classifyExternal(String typeName, String varName, String methodName) {

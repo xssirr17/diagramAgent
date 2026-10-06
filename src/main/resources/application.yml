@@ -11,7 +11,7 @@ diagram:
   agentic: false
   max-tool-calls: 15
   mermaid-cli-path: mmdc
-  max-files-scanned: 500
+  max-files-scanned: ${DIAGRAM_MAX_FILES_SCANNED:5000}
   max-file-size-bytes: 1048576
 
 ---

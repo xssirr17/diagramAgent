@@ -83,12 +83,26 @@ public class DiagramAgent {
                 } else if (!model.classes().isEmpty()) {
                     warnings.add("No endpoints detected; scanned structure directly.");
                 }
+            } else {
+                String targetClass = extractTargetClass(resolvedEntryPoint, model);
+                if (targetClass != null && !targetClass.isBlank()) {
+                    boolean found = model.findClass(targetClass).isPresent();
+                    log.info("Entry class check: targetClass='{}', foundInModel={}, totalClassesInModel={}",
+                        targetClass, found, model.classes().size());
+                    if (!found) {
+                        throw new InsufficientInformationException(
+                            "Entry class '" + targetClass + "' not found in scanned model (scanned " +
+                            model.classes().size() + " classes). Ensure projectPath is correct or raise diagram.max-files-scanned."
+                        );
+                    }
+                }
             }
         }
 
         // Build prompt context
         int depth = maxDepth > 0 ? maxDepth : properties.maxDepth();
         String context = model.toPromptContext(type, resolvedEntryPoint, depth, properties.maxContextChars());
+        log.info("Prompt context generated: chars={}, maxAllowedChars={}", context.length(), properties.maxContextChars());
 
         // Set tool registry active context if agentic mode is enabled
         boolean agentic = properties.agentic();
@@ -192,4 +206,21 @@ public class DiagramAgent {
             }
         }
     }
+
+    private String extractTargetClass(String ep, ServiceModel model) {
+        if (ep == null || ep.isBlank()) return null;
+        String trimmed = ep.trim();
+        if (trimmed.contains("#")) {
+            return trimmed.split("#")[0].trim();
+        }
+        Optional<EndpointInfo> matched = model.findEndpoint(trimmed);
+        if (matched.isPresent()) {
+            return matched.get().controllerClass();
+        }
+        if (!trimmed.contains(" ") && !trimmed.contains("/")) {
+            return trimmed;
+        }
+        return null;
+    }
 }
+

@@ -150,6 +150,9 @@ public class ProjectScanner {
         List<EnumInfo> enums = stateExtractor.extractEnums(enumDecls, "");
         List<StateHint> stateHints = stateExtractor.extractStateHints(classDecls, enums);
 
+        log.info("Scan completed for {}: filesScanned={}, classesInModel={}, enumsInModel={}, endpointsInModel={}",
+            projectRoot, javaFiles.size(), classes.size(), enums.size(), allEndpoints.size());
+
         return new ServiceModel(classes, allEndpoints, enums, stateHints, warnings);
     }
 
@@ -164,8 +167,10 @@ public class ProjectScanner {
     }
 
     private List<Path> findJavaFiles(Path root, List<String> warnings) {
-        List<Path> javaFiles = new ArrayList<>();
+        List<Path> allJavaFiles = new ArrayList<>();
         int maxFiles = properties.maxFilesScanned();
+        boolean hasSrcMainJava = Files.exists(root.resolve("src/main/java")) ||
+            root.toString().replace('\\', '/').contains("/src/main/java");
 
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -181,14 +186,9 @@ public class ProjectScanner {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     if (file.toString().endsWith(".java")) {
-                        // Check if file is under src/main/java
                         String normalized = file.toString().replace('\\', '/');
-                        if (normalized.contains("/src/main/java/") || normalized.contains("src/main/java")) {
-                            if (javaFiles.size() >= maxFiles) {
-                                warnings.add("Max files limit (" + maxFiles + ") reached; some files were not scanned.");
-                                return FileVisitResult.TERMINATE;
-                            }
-                            javaFiles.add(file);
+                        if (!hasSrcMainJava || normalized.contains("/src/main/java/") || normalized.contains("src/main/java")) {
+                            allJavaFiles.add(file);
                         }
                     }
                     return FileVisitResult.CONTINUE;
@@ -199,6 +199,31 @@ public class ProjectScanner {
             warnings.add("Error walking directory: " + e.getMessage());
         }
 
-        return javaFiles;
+        int totalFound = allJavaFiles.size();
+        log.info("File search for {}: totalJavaFilesFound={}, maxFilesAllowed={}", root, totalFound, maxFiles);
+
+        if (totalFound <= maxFiles) {
+            return allJavaFiles;
+        }
+
+        warnings.add("Max files limit (" + maxFiles + ") reached; prioritized and scanned " + maxFiles + " of " + totalFound + " files.");
+
+        // Prioritize: Controllers first, then Services, then Repositories/Clients, then others
+        allJavaFiles.sort((p1, p2) -> {
+            int score1 = priorityScore(p1.getFileName().toString());
+            int score2 = priorityScore(p2.getFileName().toString());
+            return Integer.compare(score1, score2);
+        });
+
+        return allJavaFiles.subList(0, maxFiles);
+    }
+
+    private static int priorityScore(String fileName) {
+        String lower = fileName.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith("controller.java") || lower.contains("endpoint")) return 1;
+        if (lower.endsWith("service.java") || lower.endsWith("serviceimpl.java")) return 2;
+        if (lower.endsWith("repository.java") || lower.endsWith("dao.java") || lower.endsWith("client.java")) return 3;
+        if (lower.endsWith("config.java") || lower.endsWith("configuration.java")) return 4;
+        return 5;
     }
 }

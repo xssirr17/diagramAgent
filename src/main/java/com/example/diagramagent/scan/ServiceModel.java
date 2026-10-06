@@ -146,8 +146,11 @@ public record ServiceModel(
                             sb.append("        * ").append(cf.kind())
                                 .append(" (").append(cf.conditionOrDetail()).append(")\n");
                             for (CallInfo c : cf.calls()) {
-                                sb.append("            -> ").append(c.targetClass()).append("#").append(c.methodName())
-                                    .append(" [").append(c.kind()).append("]\n");
+                                sb.append("            -> ").append(c.targetClass()).append("#").append(c.methodName());
+                                if (c.arguments() != null && !c.arguments().isBlank()) {
+                                    sb.append("(").append(c.arguments()).append(")");
+                                }
+                                sb.append(" [").append(c.kind()).append("]\n");
                             }
                         }
                     }
@@ -225,8 +228,11 @@ public record ServiceModel(
                     if (m.isPrivate()) continue; // Prune private helpers
                     sb.append("  ").append(m.signature()).append("\n");
                     for (CallInfo c : m.outgoingCalls()) {
-                        sb.append("    -> ").append(c.targetClass()).append("#").append(c.methodName())
-                            .append(" [").append(c.kind()).append("]\n");
+                        sb.append("    -> ").append(c.targetClass()).append("#").append(c.methodName());
+                        if (c.arguments() != null && !c.arguments().isBlank()) {
+                            sb.append("(").append(c.arguments()).append(")");
+                        }
+                        sb.append(" [").append(c.kind()).append("]\n");
                     }
                 }
             }

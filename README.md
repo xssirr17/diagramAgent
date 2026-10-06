@@ -33,7 +33,8 @@ The application does **NOT** dump raw source code into the LLM. Instead, it oper
 |---|---|---|
 | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Gemini Developer API key (for `gemini-api` profile) | `AIzaSy...` |
 | `DIAGRAM_ROOT` | Allowed root path on the local filesystem (mandatory for security) | E.g. `/workspace` or `.` |
-| `DIAGRAM_MODEL` | Gemini model name | `gemini-2.5-flash` (or `gemini-2.0-flash`) |
+| `DIAGRAM_MODEL` | Gemini model name | `gemini-2.5-flash` (or `gemini-3.5-flash`) |
+| `DIAGRAM_MAX_FILES_SCANNED` | Maximum Java source files scanned (caps large repository scans) | `5000` (default) |
 | `GCP_PROJECT_ID` | GCP Project ID (for `vertex` profile) | `my-gcp-project` |
 | `GCP_LOCATION` | GCP Region (for `vertex` profile) | `us-central1` |
 | `SPRING_PROFILES_ACTIVE` | Active Spring profile | `gemini-api` (default) or `vertex` |
@@ -227,11 +228,21 @@ curl -X POST "http://localhost:8080/api/diagrams" \
      - Adds a warning: `"Full mermaid-cli (mmdc) validation was skipped; structural check applied."`
 
 ### Enabling `mmdc` Validation
-To enable full CLI validation, install Mermaid CLI globally:
+To enable full CLI validation, install Mermaid CLI either locally as a development dependency or globally:
+
 ```bash
+# Option A: Install locally in project
+npm install --save-dev @mermaid-js/mermaid-cli
+
+# Option B: Install globally
 npm install -g @mermaid-js/mermaid-cli
 ```
-Verify `mmdc --version` is accessible from your shell.
+
+If installed locally, Diagram Agent automatically detects `node_modules/.bin/mmdc.cmd` (or `node_modules/.bin/mmdc` on Unix). You can also explicitly configure the path using `diagram.mermaid-cli-path` in `application.yml`:
+```yaml
+diagram:
+  mermaid-cli-path: node_modules/.bin/mmdc.cmd
+```
 
 ### Automated Correction Loop (`DiagramRetryService`)
 If the model produces invalid Mermaid code:
@@ -254,11 +265,21 @@ All tool executions are restricted strictly within the verified `PathGuard` work
 
 ---
 
-## 8. Security & Guardrails
+## 8. Subfolder & Module Scans
+
+The `path` parameter in API requests (`POST /api/diagrams` and `GET /api/diagrams/endpoints`) supports:
+- Repository root: `.` or an absolute path within `diagram.allowed-root`.
+- Subfolders / Gradle submodules: e.g. `service-core` or `src/main/java/com/example/orderservice`.
+When pointing to a subfolder without a dedicated `src/main/java` hierarchy, the scanner traverses `.java` files directly under that subfolder.
+
+---
+
+## 9. Security & Guardrails
 
 - **Path Confinement (`PathGuard`)**: `diagram.allowed-root` is mandatory. All requested paths are resolved against this root, normalized, and evaluated with `toRealPath()` to block directory traversal (`../`), absolute paths outside root, and symlink escapes.
 - **No Code Execution**: Scanned Java code is parsed strictly as abstract syntax trees (ASTs) using JavaParser. Project binaries or classes are never loaded or executed.
-- **Resource Caps**: Scans are bounded by `diagram.max-files-scanned` (default 500) and `diagram.max-file-size-bytes` (default 1MB).
+- **Resource Caps**: Scans are bounded by `diagram.max-files-scanned` (default `5000`, configurable via `DIAGRAM_MAX_FILES_SCANNED`) and `diagram.max-file-size-bytes` (default 1MB). When file limits are exceeded, classes are prioritized by architectural significance (Controllers > Services > Repositories/Clients > Configurations > Others).
+- **Fast Failure (422)**: If an entry point class is missing from the scanned model (e.g. invalid name or excluded by scan limits), the agent immediately fails with `422 Unprocessable Entity` rather than making an uninformative LLM call.
 - **Privacy Notice**: Extracted structural metadata (class names, method signatures, call flows, enum values) is transmitted to Google's Gemini API for diagram generation. Users must ensure compliance with their organization's data privacy policies.
 
 ---
