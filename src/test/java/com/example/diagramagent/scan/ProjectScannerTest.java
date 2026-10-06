@@ -14,7 +14,8 @@ class ProjectScannerTest {
     @Test
     void scansOrderServiceFixtureSuccessfully() {
         DiagramProperties props = new DiagramProperties(
-            null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L
+            null, 60000, 2, 4, false, 15, "mmdc", 500, 1048576L,
+            new DiagramProperties.CacheProperties(true, 5, 30, false)
         );
         EndpointExtractor endpointExtractor = new EndpointExtractor();
         CallChainExtractor callChainExtractor = new CallChainExtractor();

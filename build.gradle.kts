@@ -47,6 +47,7 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.javaparser.core)
     implementation(libs.javaparser.symbol.solver)
+    implementation(libs.caffeine)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 

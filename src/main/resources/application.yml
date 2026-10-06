@@ -13,6 +13,11 @@ diagram:
   mermaid-cli-path: mmdc
   max-files-scanned: ${DIAGRAM_MAX_FILES_SCANNED:5000}
   max-file-size-bytes: 1048576
+  cache:
+    enabled: ${DIAGRAM_CACHE_ENABLED:true}
+    max-projects: ${DIAGRAM_CACHE_MAX_PROJECTS:5}
+    ttl-minutes: ${DIAGRAM_CACHE_TTL_MINUTES:30}
+    results: ${DIAGRAM_CACHE_RESULTS:false}
 
 ---
 spring:

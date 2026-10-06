@@ -8,5 +8,16 @@ public record DiagramResponse(
     String mermaid,
     boolean valid,
     int attempts,
-    List<String> warnings
-) {}
+    List<String> warnings,
+    boolean cached
+) {
+    public DiagramResponse(
+        DiagramType type,
+        String mermaid,
+        boolean valid,
+        int attempts,
+        List<String> warnings
+    ) {
+        this(type, mermaid, valid, attempts, warnings, false);
+    }
+}

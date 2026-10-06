@@ -1,9 +1,9 @@
 package com.example.diagramagent.api;
 
 import com.example.diagramagent.agent.DiagramAgent;
+import com.example.diagramagent.cache.ServiceModelCache;
 import com.example.diagramagent.scan.DiagramType;
 import com.example.diagramagent.scan.EndpointInfo;
-import com.example.diagramagent.scan.ProjectScanner;
 import com.example.diagramagent.scan.ServiceModel;
 import com.example.diagramagent.security.PathGuard;
 import java.nio.file.Path;
@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,7 +36,7 @@ class DiagramControllerTest {
     private PathGuard pathGuard;
 
     @MockBean
-    private ProjectScanner projectScanner;
+    private ServiceModelCache serviceModelCache;
 
     @MockBean
     private DiagramAgent diagramAgent;
@@ -46,7 +47,7 @@ class DiagramControllerTest {
         when(pathGuard.validateAndResolve(any())).thenReturn(mockPath);
 
         ServiceModel mockModel = new ServiceModel(List.of(), List.of(), List.of(), List.of(), List.of());
-        when(projectScanner.scan(mockPath)).thenReturn(mockModel);
+        when(serviceModelCache.getOrScan(mockPath)).thenReturn(mockModel);
 
         DiagramAgent.DiagramResult agentResult = new DiagramAgent.DiagramResult(
             DiagramType.SEQUENCE, "sequenceDiagram\nClient->>A: ping", true, 1, List.of()
@@ -99,7 +100,7 @@ class DiagramControllerTest {
         when(pathGuard.validateAndResolve(any())).thenReturn(mockPath);
 
         ServiceModel mockModel = new ServiceModel(List.of(), List.of(), List.of(), List.of(), List.of());
-        when(projectScanner.scan(mockPath)).thenReturn(mockModel);
+        when(serviceModelCache.getOrScan(mockPath)).thenReturn(mockModel);
 
         when(diagramAgent.generateDiagram(any(), any(), eq(DiagramType.STATE), any(), eq(4)))
             .thenThrow(new InsufficientInformationException("No states found in project"));
@@ -126,12 +127,19 @@ class DiagramControllerTest {
 
         EndpointInfo ep = new EndpointInfo("POST", "/orders", "OrderController", "create");
         ServiceModel mockModel = new ServiceModel(List.of(), List.of(ep), List.of(), List.of(), List.of());
-        when(projectScanner.scan(mockPath)).thenReturn(mockModel);
+        when(serviceModelCache.getOrScan(mockPath)).thenReturn(mockModel);
 
         mockMvc.perform(get("/api/diagrams/endpoints").param("path", "service"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].httpMethod").value("POST"))
             .andExpect(jsonPath("$[0].path").value("/orders"))
             .andExpect(jsonPath("$[0].handler").value("OrderController#create"));
+    }
+
+    @Test
+    void deleteCacheReturns200() throws Exception {
+        mockMvc.perform(delete("/api/diagrams/cache"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("CLEARED"));
     }
 }

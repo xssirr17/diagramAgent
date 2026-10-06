@@ -1,14 +1,16 @@
 package com.example.diagramagent.api;
 
 import com.example.diagramagent.agent.DiagramAgent;
+import com.example.diagramagent.cache.ServiceModelCache;
 import com.example.diagramagent.scan.EndpointInfo;
-import com.example.diagramagent.scan.ProjectScanner;
 import com.example.diagramagent.scan.ServiceModel;
 import com.example.diagramagent.security.PathGuard;
 import jakarta.validation.Valid;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,25 +23,41 @@ import org.springframework.web.bind.annotation.RestController;
 public class DiagramController {
 
     private final PathGuard pathGuard;
-    private final ProjectScanner projectScanner;
+    private final ServiceModelCache serviceModelCache;
     private final DiagramAgent diagramAgent;
 
     public DiagramController(
         PathGuard pathGuard,
-        ProjectScanner projectScanner,
+        ServiceModelCache serviceModelCache,
         DiagramAgent diagramAgent
     ) {
         this.pathGuard = pathGuard;
-        this.projectScanner = projectScanner;
+        this.serviceModelCache = serviceModelCache;
         this.diagramAgent = diagramAgent;
     }
 
     @PostMapping
     public ResponseEntity<DiagramResponse> generateDiagram(@Valid @RequestBody DiagramRequest request) {
         Path resolvedPath = pathGuard.validateAndResolve(request.effectivePath());
-        ServiceModel model = projectScanner.scan(resolvedPath);
-
         int maxDepth = request.maxDepth() != null && request.maxDepth() > 0 ? request.maxDepth() : 4;
+
+        // Check result cache first if enabled
+        DiagramAgent.DiagramResult cachedResult = serviceModelCache.getCachedResult(
+            resolvedPath, request.type(), request.entryPoint(), maxDepth
+        );
+        if (cachedResult != null) {
+            return ResponseEntity.ok(new DiagramResponse(
+                cachedResult.type(),
+                cachedResult.mermaid(),
+                cachedResult.valid(),
+                cachedResult.attempts(),
+                cachedResult.warnings(),
+                true
+            ));
+        }
+
+        ServiceModel model = serviceModelCache.getOrScan(resolvedPath);
+
         DiagramAgent.DiagramResult result = diagramAgent.generateDiagram(
             resolvedPath,
             model,
@@ -48,12 +66,15 @@ public class DiagramController {
             maxDepth
         );
 
+        serviceModelCache.putResult(resolvedPath, request.type(), request.entryPoint(), maxDepth, result);
+
         return ResponseEntity.ok(new DiagramResponse(
             result.type(),
             result.mermaid(),
             result.valid(),
             result.attempts(),
-            result.warnings()
+            result.warnings(),
+            result.cached()
         ));
     }
 
@@ -64,7 +85,7 @@ public class DiagramController {
     ) {
         String targetPath = path != null && !path.isBlank() ? path : projectPath;
         Path resolvedPath = pathGuard.validateAndResolve(targetPath);
-        ServiceModel model = projectScanner.scan(resolvedPath);
+        ServiceModel model = serviceModelCache.getOrScan(resolvedPath);
 
         List<EndpointResponse> dtos = model.endpoints().stream()
             .map(e -> new EndpointResponse(
@@ -75,5 +96,14 @@ public class DiagramController {
             .toList();
 
         return ResponseEntity.ok(dtos);
+    }
+
+    @DeleteMapping("/cache")
+    public ResponseEntity<Map<String, String>> clearCache() {
+        serviceModelCache.clear();
+        return ResponseEntity.ok(Map.of(
+            "status", "CLEARED",
+            "message", "Service model and diagram result caches have been cleared."
+        ));
     }
 }

@@ -45,8 +45,19 @@ public class DiagramAgent {
         String mermaid,
         boolean valid,
         int attempts,
-        List<String> warnings
-    ) {}
+        List<String> warnings,
+        boolean cached
+    ) {
+        public DiagramResult(
+            DiagramType type,
+            String mermaid,
+            boolean valid,
+            int attempts,
+            List<String> warnings
+        ) {
+            this(type, mermaid, valid, attempts, warnings, false);
+        }
+    }
 
     public DiagramResult generateDiagram(
         Path projectPath,

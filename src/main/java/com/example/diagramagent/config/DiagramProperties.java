@@ -12,7 +12,8 @@ public record DiagramProperties(
     int maxToolCalls,
     String mermaidCliPath,
     int maxFilesScanned,
-    long maxFileSizeBytes
+    long maxFileSizeBytes,
+    CacheProperties cache
 ) {
     public DiagramProperties {
         if (maxContextChars <= 0) {
@@ -35,6 +36,21 @@ public record DiagramProperties(
         }
         if (maxFileSizeBytes <= 0) {
             maxFileSizeBytes = 1048576L; // 1 MB default
+        }
+        if (cache == null) {
+            cache = new CacheProperties(true, 5, 30, false);
+        }
+    }
+
+    public record CacheProperties(
+        boolean enabled,
+        int maxProjects,
+        int ttlMinutes,
+        boolean results
+    ) {
+        public CacheProperties {
+            if (maxProjects <= 0) maxProjects = 5;
+            if (ttlMinutes <= 0) ttlMinutes = 30;
         }
     }
 }

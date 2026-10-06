@@ -15,7 +15,8 @@ class MermaidValidatorTest {
     @BeforeEach
     void setUp() {
         DiagramProperties props = new DiagramProperties(
-            null, 60000, 2, 4, false, 15, "non-existent-mmdc", 500, 1048576L
+            null, 60000, 2, 4, false, 15, "non-existent-mmdc", 500, 1048576L,
+            new DiagramProperties.CacheProperties(true, 5, 30, false)
         );
         validator = new MermaidValidator(props);
     }

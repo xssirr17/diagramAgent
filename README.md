@@ -212,6 +212,33 @@ curl -X POST "http://localhost:8080/api/diagrams" \
 }
 ```
 
+### 5. Clear ServiceModel and Result Cache
+```bash
+curl -X DELETE "http://localhost:8080/api/diagrams/cache"
+```
+**Windows PowerShell:**
+```powershell
+Invoke-RestMethod -Method Delete -Uri "http://localhost:8080/api/diagrams/cache"
+```
+**Response:**
+```json
+{
+  "status": "CLEARED",
+  "message": "ServiceModel and DiagramResult caches have been cleared."
+}
+```
+
+---
+
+## 5. ServiceModel & Diagram Result Caching
+
+To avoid re-scanning and re-parsing thousands of Java files on repeated requests, Diagram Agent features an in-memory Caffeine cache:
+- **`diagram.cache.enabled`** (default: `true`): Enables caching of parsed `ServiceModel` structures.
+- **`diagram.cache.max-projects`** (default: `5`): Maximum distinct project models cached in memory.
+- **`diagram.cache.ttl-minutes`** (default: `30`): Time-to-live before cached models expire.
+- **`diagram.cache.results`** (default: `false`): When `true`, caches final diagram results keyed by source tree fingerprint, diagram type, entry point, max depth, model name, and prompt version, skipping LLM invocation for identical requests. Responses indicate whether results were cached via `"cached": true/false`.
+- **Automatic Invalidation**: On each request, Diagram Agent computes a high-speed fingerprint of `.java` relative paths, sizes, and timestamps. If any file changes, the cache is invalidated automatically without serving stale data.
+
 ---
 
 ## 6. Mermaid Validation & Automated Retries
