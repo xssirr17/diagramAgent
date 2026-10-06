@@ -16,7 +16,18 @@ public class DiagramAgentApplication {
     public static void main(String[] args) {
         configureProxyIfPresent();
         SpringApplication app = new SpringApplication(DiagramAgentApplication.class);
-        if (isCliCommand(args)) {
+        if (isMcpCommand(args)) {
+            String stdioProp = System.getProperty("spring.ai.mcp.server.stdio");
+            boolean isStdio = !"false".equalsIgnoreCase(stdioProp)
+                    && !"false".equalsIgnoreCase(System.getenv("SPRING_AI_MCP_SERVER_STDIO"))
+                    && !"false".equalsIgnoreCase(System.getenv("MCP_STDIO"));
+            if (isStdio) {
+                app.setWebApplicationType(WebApplicationType.NONE);
+            }
+            app.setBannerMode(Banner.Mode.OFF);
+            app.setAdditionalProfiles("mcp");
+            app.run(args);
+        } else if (isCliCommand(args)) {
             app.setWebApplicationType(WebApplicationType.NONE);
             app.setBannerMode(Banner.Mode.OFF);
             app.setAdditionalProfiles("cli");
@@ -25,6 +36,21 @@ public class DiagramAgentApplication {
         } else {
             app.run(args);
         }
+    }
+
+    public static boolean isMcpCommand(String[] args) {
+        String profile = System.getProperty("spring.profiles.active");
+        if (profile == null) {
+            profile = System.getenv("SPRING_PROFILES_ACTIVE");
+        }
+        if (profile != null && (profile.equals("mcp") || profile.contains("mcp"))) {
+            return true;
+        }
+        if (args != null && args.length > 0) {
+            String first = args[0].trim().toLowerCase();
+            return first.equals("mcp") || first.equals("--mcp");
+        }
+        return false;
     }
 
     public static boolean isCliCommand(String[] args) {

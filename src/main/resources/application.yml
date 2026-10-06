@@ -6,6 +6,16 @@ spring:
       cli:
         - cli
         - gemini-api
+      mcp:
+        - mcp
+        - gemini-api
+      mcp-web:
+        - mcp-web
+        - gemini-api
+  ai:
+    mcp:
+      server:
+        enabled: false
 
 diagram:
   allowed-root: ${DIAGRAM_ROOT:.}
@@ -54,3 +64,35 @@ spring:
               model: ${DIAGRAM_MODEL:gemini-2.5-flash}
               temperature: 0.1
               max-output-tokens: 4000
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mcp
+  main:
+    banner-mode: "off"
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: diagram-agent
+        version: 0.0.1
+        stdio: ${MCP_STDIO:true}
+        type: sync
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mcp-web
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: diagram-agent
+        version: 0.0.1
+        stdio: false
+        protocol: sse
+        type: sync
+

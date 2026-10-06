@@ -54,6 +54,8 @@ dependencies {
     implementation(libs.caffeine)
     implementation(libs.jgit)
     implementation(libs.picocli)
+    implementation(libs.spring.ai.mcp.server)
+    implementation(libs.spring.ai.mcp.server.webmvc)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 

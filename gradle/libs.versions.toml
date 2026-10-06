@@ -18,6 +18,8 @@ spring-boot-configuration-processor = { module = "org.springframework.boot:sprin
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine" }
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version = "6.10.0.202406032230-r" }
 picocli = { module = "info.picocli:picocli", version = "4.7.6" }
+spring-ai-mcp-server = { module = "org.springframework.ai:spring-ai-starter-mcp-server" }
+spring-ai-mcp-server-webmvc = { module = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
