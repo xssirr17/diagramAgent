@@ -27,6 +27,10 @@ dependencyManagement {
 
 val aiProvider = providers.gradleProperty("aiProvider").getOrElse("gemini-api")
 
+configurations.all {
+    exclude(group = "commons-logging", module = "commons-logging")
+}
+
 dependencies {
     implementation(platform(libs.spring.ai.bom))
 
@@ -49,6 +53,7 @@ dependencies {
     implementation(libs.javaparser.symbol.solver)
     implementation(libs.caffeine)
     implementation(libs.jgit)
+    implementation(libs.picocli)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 

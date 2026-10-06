@@ -27,6 +27,7 @@ public class DiagramRenderer {
 
     public record ProcessResult(int exitCode, String stdout, String stderr) {}
 
+    @org.springframework.beans.factory.annotation.Autowired
     public DiagramRenderer(DiagramProperties properties) {
         this(properties, new DefaultProcessExecutor());
     }

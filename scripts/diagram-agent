@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ -f "$DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$DIR/.env"
+  set +a
+fi
+JAR="$(find "$DIR/build/libs" -name "diagram-agent-*.jar" ! -name "*-plain.jar" 2>/dev/null | head -n 1)"
+
+if [ -z "$JAR" ]; then
+  echo "diagram-agent.jar not found in build/libs. Building with ./gradlew bootJar..." >&2
+  (cd "$DIR" && ./gradlew bootJar -q)
+  JAR="$(find "$DIR/build/libs" -name "diagram-agent-*.jar" ! -name "*-plain.jar" 2>/dev/null | head -n 1)"
+fi
+
+exec java -Dspring.profiles.active=cli,gemini-api -Dspring.main.web-application-type=none -jar "$JAR" "$@"
